@@ -271,11 +271,12 @@ class PropertyInspectorWindow(arcade.Window):
         self._is_visible = bool(visible)
         if self._is_headless:
             return
-        if self._ui_manager is not None:
+        ui_manager = getattr(self, "_ui_manager", None)
+        if ui_manager is not None:
             if visible:
-                self._ui_manager.enable()
+                ui_manager.enable()
             else:
-                self._ui_manager.disable()
+                ui_manager.disable()
         try:
             super().set_visible(visible)
         except Exception:

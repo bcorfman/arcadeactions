@@ -158,23 +158,17 @@ def _create_window(*, main_window=None, on_close_callback=None) -> tuple[Propert
     return window, inspector
 
 
-def test_constructor_predefines_ui_attrs_before_visibility_callback(mocker):
-    """set_visible during window creation should not fail before UI fields are initialized."""
-    called = {"set_visible": False}
-    original_set_visible = PropertyInspectorWindow.set_visible
+def test_set_visible_handles_missing_ui_manager_attribute(mocker):
+    """set_visible should not fail if backend callbacks fire before _ui_manager exists."""
+    super_set_visible = mocker.patch.object(inspector_module.arcade.Window, "set_visible", return_value=None)
+    window = object.__new__(PropertyInspectorWindow)
+    window._is_headless = False
+    window._is_visible = False
 
-    def fake_window_init(self, **_kwargs):
-        original_set_visible(self, False)
-        called["set_visible"] = True
+    window.set_visible(False)
 
-    mocker.patch.object(inspector_module.arcade.Window, "__init__", new=fake_window_init)
-    mocker.patch.object(inspector_module.arcade.Window, "set_visible", return_value=None)
-
-    inspector = _InspectorStub()
-    window = PropertyInspectorWindow(inspector=inspector)
-
-    assert called["set_visible"] is True
-    assert window._ui_manager is not None
+    assert window._is_visible is False
+    super_set_visible.assert_called_once_with(False)
 
 
 def test_editor_widget_is_taller_and_positioned_below_value_line():
