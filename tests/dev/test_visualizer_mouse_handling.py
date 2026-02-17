@@ -15,6 +15,12 @@ from tests.conftest import ActionTestBase
 pytestmark = pytest.mark.integration
 
 
+@pytest.fixture(autouse=True)
+def _suppress_property_inspector_windows(mocker):
+    """Prevent auto-opened inspector windows during mouse-path integration tests."""
+    mocker.patch.object(DevVisualizer, "open_property_inspector_for_current_selection", return_value=True)
+
+
 class TestHandleMousePress(ActionTestBase):
     """Test suite for handle_mouse_press method."""
 
@@ -79,9 +85,8 @@ class TestHandleMousePress(ActionTestBase):
         # Should continue to sprite drag or selection
         assert dev_viz._dragging_gizmo_handle is None
 
-    def test_sprite_with_source_markers_opens_editor(self, window, test_sprite, mocker):
-        """Test that clicking sprite with source markers opens editor."""
-        # Document current behavior: getattr used to check for _source_markers
+    def test_ctrl_click_sprite_with_source_markers_opens_editor(self, window, test_sprite, mocker):
+        """Ctrl+click on sprite with source markers should open editor."""
         dev_viz = DevVisualizer()
         dev_viz.scene_sprites.append(test_sprite)
         test_sprite.center_x = 100
@@ -90,28 +95,95 @@ class TestHandleMousePress(ActionTestBase):
         test_sprite._source_markers = [{"file": "test.py", "lineno": 10}]
 
         mock_open = mocker.patch.object(dev_viz, "open_sprite_source")
+        mock_open_editor = mocker.patch.object(dev_viz, "open_overrides_editor_for_sprite")
+
+        result = dev_viz.handle_mouse_press(100, 100, arcade.MOUSE_BUTTON_LEFT, arcade.key.MOD_CTRL)
+
+        assert result is True
+        mock_open.assert_called_once_with(test_sprite, {"file": "test.py", "lineno": 10})
+        mock_open_editor.assert_not_called()
+
+    def test_plain_click_arrange_marker_opens_overrides_panel(self, window, test_sprite, mocker):
+        """Plain click on arrange-linked sprite should open overrides panel, not source jump."""
+        dev_viz = DevVisualizer()
+        dev_viz.scene_sprites.append(test_sprite)
+        test_sprite.center_x = 100
+        test_sprite.center_y = 100
+
+        test_sprite._source_markers = [{"file": "test.py", "lineno": 10, "type": "arrange"}]
+
+        mock_open = mocker.patch.object(dev_viz, "open_sprite_source")
+        mock_overrides_open = mocker.patch.object(dev_viz, "open_overrides_editor_for_sprite", return_value=True)
+
+        result = dev_viz.handle_mouse_press(100, 100, arcade.MOUSE_BUTTON_LEFT, 0)
+
+        mock_open.assert_not_called()
+        mock_overrides_open.assert_called_once_with(test_sprite)
+        assert result is True
+
+    def test_plain_click_arrange_marker_selects_whole_group(self, window, mocker):
+        """Plain click on one arrange sprite should select all sprites in that arrange call."""
+        dev_viz = DevVisualizer()
+        sprite_a = arcade.SpriteSolidColor(width=8, height=8, color=arcade.color.RED)
+        sprite_b = arcade.SpriteSolidColor(width=8, height=8, color=arcade.color.BLUE)
+        sprite_c = arcade.SpriteSolidColor(width=8, height=8, color=arcade.color.GREEN)
+        marker = {"file": "scene.py", "lineno": 42, "type": "arrange"}
+        sprite_a._source_markers = [marker]
+        sprite_b._source_markers = [marker]
+        sprite_c._source_markers = [{"file": "scene.py", "lineno": 41, "type": "arrange"}]
+        sprite_a.center_x = sprite_b.center_x = sprite_c.center_x = 100
+        sprite_a.center_y = sprite_b.center_y = sprite_c.center_y = 100
+        dev_viz.scene_sprites.extend([sprite_a, sprite_b, sprite_c])
+        mocker.patch("arcadeactions.dev.visualizer.arcade.get_sprites_at_point", return_value=[sprite_a])
+        mock_open = mocker.patch.object(dev_viz, "open_overrides_editor_for_sprite", return_value=True)
 
         result = dev_viz.handle_mouse_press(100, 100, arcade.MOUSE_BUTTON_LEFT, 0)
 
         assert result is True
-        mock_open.assert_called_once_with(test_sprite, {"file": "test.py", "lineno": 10})
+        mock_open.assert_called_once_with(sprite_a)
+        selected = set(dev_viz.selection_manager.get_selected())
+        assert selected == {sprite_a, sprite_b}
 
-    def test_sprite_with_source_markers_requires_no_modifiers(self, window, test_sprite, mocker):
-        """Test that source marker click requires no modifiers."""
+    def test_arrange_click_ignores_lock_modifiers(self, window, test_sprite, mocker):
+        """Lock-key modifiers (e.g., NumLock) should not block arrange panel open."""
         dev_viz = DevVisualizer()
         dev_viz.scene_sprites.append(test_sprite)
         test_sprite.center_x = 100
         test_sprite.center_y = 100
-
-        test_sprite._source_markers = [{"file": "test.py", "lineno": 10}]
+        test_sprite._source_markers = [{"file": "test.py", "lineno": 10, "type": "arrange"}]
 
         mock_open = mocker.patch.object(dev_viz, "open_sprite_source")
+        mock_overrides_open = mocker.patch.object(dev_viz, "open_overrides_editor_for_sprite", return_value=True)
 
-        # With shift modifier, should not open editor
-        result = dev_viz.handle_mouse_press(100, 100, arcade.MOUSE_BUTTON_LEFT, arcade.key.MOD_SHIFT)
+        result = dev_viz.handle_mouse_press(100, 100, arcade.MOUSE_BUTTON_LEFT, arcade.key.MOD_NUMLOCK)
 
+        assert result is True
         mock_open.assert_not_called()
-        # Should continue to sprite drag or selection
+        mock_overrides_open.assert_called_once_with(test_sprite)
+
+    def test_plain_click_opens_overrides_when_marker_points_to_arrange_line(
+        self, window, test_sprite, mocker, tmp_path
+    ):
+        """Arrange detection should work from file/line marker even without explicit type."""
+        source_path = tmp_path / "scene.py"
+        source_path.write_text(
+            "x = 1\narrange_grid(sprites=s, rows=1, cols=2, start_x=10, start_y=20, spacing_x=5, spacing_y=5)\n",
+            encoding="utf-8",
+        )
+        dev_viz = DevVisualizer()
+        dev_viz.scene_sprites.append(test_sprite)
+        test_sprite.center_x = 100
+        test_sprite.center_y = 100
+        test_sprite._source_markers = [{"file": str(source_path), "lineno": 2}]
+
+        mock_open = mocker.patch.object(dev_viz, "open_sprite_source")
+        mock_overrides_open = mocker.patch.object(dev_viz, "open_overrides_editor_for_sprite", return_value=True)
+
+        result = dev_viz.handle_mouse_press(100, 100, arcade.MOUSE_BUTTON_LEFT, 0)
+
+        assert result is True
+        mock_open.assert_not_called()
+        mock_overrides_open.assert_called_once_with(test_sprite)
 
     def test_selected_sprite_drag_started(self, window, test_sprite, mocker):
         """Test that clicking on selected sprite starts drag."""

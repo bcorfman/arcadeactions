@@ -12,7 +12,9 @@ from arcadeactions.dev.visualizer import DevVisualizer
 @pytest.fixture(autouse=True)
 def forbid_real_secondary_windows(mocker):
     """Guard: these unit tests must not create real secondary windows."""
-    mocker.patch("arcadeactions.dev.visualizer.PaletteWindow", side_effect=AssertionError("PaletteWindow creation forbidden"))
+    mocker.patch(
+        "arcadeactions.dev.visualizer.PaletteWindow", side_effect=AssertionError("PaletteWindow creation forbidden")
+    )
     mocker.patch(
         "arcadeactions.dev.visualizer.CommandPaletteWindow",
         side_effect=AssertionError("CommandPaletteWindow creation forbidden"),
@@ -180,7 +182,9 @@ def test_create_command_palette_positions_below_sprite_palette_when_available(mo
     mock_palette.width = 400
     mock_palette.height = 240
     mocker.patch("arcadeactions.dev.visualizer.CommandPaletteWindow", return_value=mock_palette)
-    mocker.patch("arcadeactions.dev.visualizer.window_decorations.measure_window_decoration_deltas", return_value=(None, None))
+    mocker.patch(
+        "arcadeactions.dev.visualizer.window_decorations.measure_window_decoration_deltas", return_value=(None, None)
+    )
     mocker.patch.object(dev_viz, "_main_window_has_valid_location", return_value=True)
     window.get_location = mocker.MagicMock(return_value=(100, 200))
 
@@ -243,7 +247,9 @@ def test_create_command_palette_adds_f11_frame_height_when_measured(mocker):
     mocker.patch("arcadeactions.dev.visualizer.CommandPaletteWindow", return_value=mock_palette)
     mocker.patch.object(dev_viz, "_main_window_has_valid_location", return_value=True)
     window.get_location = mocker.MagicMock(return_value=(100, 200))
-    mocker.patch("arcadeactions.dev.visualizer.window_decorations.measure_window_decoration_deltas", return_value=(0, 28))
+    mocker.patch(
+        "arcadeactions.dev.visualizer.window_decorations.measure_window_decoration_deltas", return_value=(0, 28)
+    )
 
     dev_viz._create_command_palette_window()
 
@@ -284,7 +290,9 @@ def test_command_export_scene_prefers_examples_path(mocker):
     mock_export = mocker.patch("arcadeactions.dev.templates.export_template")
     mocker.patch("arcadeactions.dev.visualizer.os.path.exists", side_effect=lambda path: path == "examples")
 
-    result = dev_viz._command_export_scene(CommandExecutionContext(window=window, scene_sprites=dev_viz.scene_sprites, selection=[]))
+    result = dev_viz._command_export_scene(
+        CommandExecutionContext(window=window, scene_sprites=dev_viz.scene_sprites, selection=[])
+    )
 
     assert result is True
     mock_export.assert_called_once()
@@ -301,7 +309,9 @@ def test_command_export_scene_uses_scenes_fallback(mocker):
         side_effect=lambda path: path == "scenes",
     )
 
-    result = dev_viz._command_export_scene(CommandExecutionContext(window=window, scene_sprites=dev_viz.scene_sprites, selection=[]))
+    result = dev_viz._command_export_scene(
+        CommandExecutionContext(window=window, scene_sprites=dev_viz.scene_sprites, selection=[])
+    )
 
     assert result is True
     assert mock_export.call_args.args[1] == "scenes/new_scene.yaml"
@@ -318,7 +328,9 @@ def test_command_import_scene_loads_first_existing(mocker):
     sprite_b = object()
     dev_viz.scene_sprites = [sprite_a, sprite_b]
 
-    result = dev_viz._command_import_scene(CommandExecutionContext(window=window, scene_sprites=dev_viz.scene_sprites, selection=[]))
+    result = dev_viz._command_import_scene(
+        CommandExecutionContext(window=window, scene_sprites=dev_viz.scene_sprites, selection=[])
+    )
 
     assert result is True
     mock_load.assert_called_once()
@@ -335,7 +347,9 @@ def test_command_import_scene_when_missing_files(mocker):
     mock_load = mocker.patch("arcadeactions.dev.templates.load_scene_template")
     mocker.patch("arcadeactions.dev.visualizer.os.path.exists", return_value=False)
 
-    result = dev_viz._command_import_scene(CommandExecutionContext(window=window, scene_sprites=dev_viz.scene_sprites, selection=[]))
+    result = dev_viz._command_import_scene(
+        CommandExecutionContext(window=window, scene_sprites=dev_viz.scene_sprites, selection=[])
+    )
 
     assert result is True
     mock_load.assert_not_called()
@@ -346,7 +360,9 @@ def test_command_show_help_prints_message(mocker, capsys):
     window = _make_window_stub(mocker)
     dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList(), window=window)
 
-    result = dev_viz._command_show_help(CommandExecutionContext(window=window, scene_sprites=dev_viz.scene_sprites, selection=[]))
+    result = dev_viz._command_show_help(
+        CommandExecutionContext(window=window, scene_sprites=dev_viz.scene_sprites, selection=[])
+    )
 
     assert result is True
     assert "Dev Commands" in capsys.readouterr().out

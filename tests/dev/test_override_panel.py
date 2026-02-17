@@ -522,9 +522,8 @@ class TestOverridePanelDrawing:
 
     def test_draw_not_visible(self, window, mock_inspector, mock_window, mocker):
         """Test draw does nothing when not visible."""
-        mock_draw_rect = mocker.patch("arcade.draw_rect_filled", create=True)
+        mock_draw_rect = mocker.patch("arcade.draw_lbwh_rectangle_filled", create=True)
         mock_draw_text = mocker.patch("arcade.draw_text", create=True)
-        mock_color = mocker.patch("arcade.color_from_hex_string", return_value=(34, 40, 42), create=True)
 
         dev_viz = DevVisualizer()
         dev_viz.window = mock_window
@@ -540,9 +539,8 @@ class TestOverridePanelDrawing:
 
     def test_draw_no_inspector(self, window, mock_window, mocker):
         """Test draw does nothing when no inspector."""
-        mock_draw_rect = mocker.patch("arcade.draw_rect_filled", create=True)
+        mock_draw_rect = mocker.patch("arcade.draw_lbwh_rectangle_filled", create=True)
         mock_draw_text = mocker.patch("arcade.draw_text", create=True)
-        mock_color = mocker.patch("arcade.color_from_hex_string", return_value=(34, 40, 42), create=True)
 
         dev_viz = DevVisualizer()
         dev_viz.window = mock_window
@@ -558,9 +556,8 @@ class TestOverridePanelDrawing:
 
     def test_draw_visible_renders_rows_and_edit_state(self, window, mock_inspector, mock_window, mocker):
         """Test draw renders rows and edit buffer when panel is visible."""
-        mock_draw_rect = mocker.patch("arcade.draw_rect_filled", create=True)
+        mock_draw_rect = mocker.patch("arcade.draw_lbwh_rectangle_filled", create=True)
         mock_draw_text = mocker.patch("arcade.draw_text", create=True)
-        mock_color = mocker.patch("arcade.color_from_hex_string", return_value=(34, 40, 42), create=True)
 
         dev_viz = DevVisualizer()
         dev_viz.window = mock_window

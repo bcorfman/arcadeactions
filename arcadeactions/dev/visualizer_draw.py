@@ -26,7 +26,6 @@ def draw_visualizer(dev_viz: Any) -> None:
             return
         _draw_gizmos(dev_viz)
         _draw_source_markers(dev_viz)
-        _draw_overrides_panel(dev_viz)
     except Exception as exc:
         import sys
 
@@ -102,11 +101,3 @@ def _draw_marker(sprite: Any, marker: dict) -> None:
     arcade.draw_rectangle_filled(sx, sy, 36, 18, bg)
     text_obj = arcade.Text(text, sx - 16, sy - 6, fg, 12)
     text_obj.draw()
-
-
-def _draw_overrides_panel(dev_viz: Any) -> None:
-    try:
-        if hasattr(dev_viz, "overrides_panel") and dev_viz.overrides_panel:
-            dev_viz.overrides_panel.draw()
-    except Exception:
-        pass

@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from weakref import WeakKeyDictionary
 
@@ -34,9 +35,10 @@ from arcadeactions.dev import window_hooks as _window_hooks
 from arcadeactions.dev.boundary_overlay import BoundaryGizmo
 from arcadeactions.dev.command_palette import CommandPaletteWindow
 from arcadeactions.dev.command_registry import CommandExecutionContext, CommandRegistry
+from arcadeactions.dev.arrange_editor import ArrangeGridEditor
 from arcadeactions.dev.palette_window import PaletteWindow
 from arcadeactions.dev.property_history import PropertyHistory
-from arcadeactions.dev.property_inspector import InMemoryClipboard, PropertyInspectorWindow, SpritePropertyInspector
+from arcadeactions.dev.property_inspector import PropertyInspectorWindow, SpritePropertyInspector
 from arcadeactions.dev.property_registry import SpritePropertyRegistry
 from arcadeactions.dev.prototype_registry import DevContext, get_registry
 from arcadeactions.dev.selection import SelectionManager
@@ -142,7 +144,7 @@ class DevVisualizer:
 
         self.selection_manager = SelectionManager(scene_sprites)
 
-        # Panels
+        # Legacy override panel backend remains for compatibility with tests/utilities.
         from arcadeactions.dev.override_panel import OverridesPanel
 
         self.overrides_panel = OverridesPanel(self)
@@ -537,14 +539,25 @@ class DevVisualizer:
         inspector = SpritePropertyInspector(
             property_registry=self.property_registry,
             history=self.property_history,
-            clipboard=InMemoryClipboard(),
             window=self.window,
         )
         self.property_inspector_window = PropertyInspectorWindow(
             inspector=inspector,
             main_window=self.window,
+            on_close_callback=self._on_property_inspector_close,
         )
         self._position_property_inspector_window()
+
+    def _on_property_inspector_close(self) -> None:
+        self.property_inspector_window = None
+
+    def _property_inspector_window_needs_recreate(self) -> bool:
+        if self.property_inspector_window is None:
+            return True
+        if self.property_inspector_window.is_closed:
+            self.property_inspector_window = None
+            return True
+        return False
 
     def _position_property_inspector_window(self) -> None:
         if self.property_inspector_window is None or self.window is None:
@@ -553,10 +566,12 @@ class DevVisualizer:
             return
         try:
             main_x, main_y = self.window.get_location()
-            inspector_width = int(self.property_inspector_window.width)
+            main_width = int(self.window.width)
         except Exception:
             return
-        inspector_x = int(main_x - inspector_width - self._EXTRA_FRAME_PAD)
+        # Keep property inspector on the opposite side of the palette/command windows.
+        # This avoids overlap when F11 palette is open on the left.
+        inspector_x = int(main_x + main_width + self._EXTRA_FRAME_PAD)
         inspector_y = int(main_y)
         try:
             self.property_inspector_window.set_location(inspector_x, inspector_y)
@@ -570,10 +585,12 @@ class DevVisualizer:
 
     def toggle_property_inspector(self) -> None:
         """Toggle property inspector window (Alt+I)."""
-        if self.property_inspector_window is None:
+        if self._property_inspector_window_needs_recreate():
             self._create_property_inspector_window()
         if self.property_inspector_window is None:
             return
+
+        self.property_inspector_window.show_properties_mode()
 
         self._sync_property_inspector_selection()
         if self.property_inspector_window.visible:
@@ -584,6 +601,22 @@ class DevVisualizer:
         self._position_property_inspector_window()
         self.property_inspector_window.show_window()
         self._activate_main_window()
+
+    def open_property_inspector_for_current_selection(self) -> bool:
+        """Show inspector in properties mode and sync current selection without toggling."""
+        if self._property_inspector_window_needs_recreate():
+            self._create_property_inspector_window()
+        if self.property_inspector_window is None:
+            return False
+
+        self.property_inspector_window.show_properties_mode()
+        self._sync_property_inspector_selection()
+        if self.property_inspector_window.visible:
+            return True
+
+        self._position_property_inspector_window()
+        self.property_inspector_window.show_window()
+        return True
 
     def _command_palette_needs_reposition(self) -> bool:
         if self.window is None:
@@ -668,7 +701,11 @@ class DevVisualizer:
         except Exception:
             command_height = 240
 
-        if self._command_palette_desired_location is not None and not force and not self._command_palette_needs_reposition():
+        if (
+            self._command_palette_desired_location is not None
+            and not force
+            and not self._command_palette_needs_reposition()
+        ):
             self._set_command_palette_location(self._command_palette_desired_location)
             return
 
@@ -685,7 +722,10 @@ class DevVisualizer:
                     sprite_palette_height = 400
                 sprite_palette_frame_extra = self._get_palette_frame_extra_height()
                 palette_y = int(
-                    sprite_palette_y + sprite_palette_height + sprite_palette_frame_extra + self._COMMAND_PALETTE_STACK_GAP
+                    sprite_palette_y
+                    + sprite_palette_height
+                    + sprite_palette_frame_extra
+                    + self._COMMAND_PALETTE_STACK_GAP
                 )
 
         self._set_command_palette_location((palette_x, palette_y))
@@ -1078,6 +1118,8 @@ class DevVisualizer:
             return False
 
         # Palette is now in separate window, no need to check here
+        ctrl_held = bool(modifiers & arcade.key.MOD_CTRL)
+        shift_held = bool(modifiers & arcade.key.MOD_SHIFT)
 
         # Check boundary gizmo handles (highest priority)
         selected = self.selection_manager.get_selected()
@@ -1094,18 +1136,24 @@ class DevVisualizer:
         if clicked_sprites:
             clicked_sprite = clicked_sprites[0]
 
-            # If the sprite has source markers and no modifiers, open editor at marker
-            try:
-                if isinstance(clicked_sprite, SpriteWithSourceMarkers):
-                    markers = clicked_sprite._source_markers
-                    if markers and modifiers == 0:
-                        # Open the first marker location in editor
-                        self.open_sprite_source(clicked_sprite, markers[0])
-                        return True
-            except Exception:
-                pass
+            if isinstance(clicked_sprite, SpriteWithSourceMarkers):
+                markers = clicked_sprite._source_markers
+                if markers and ctrl_held:
+                    self.open_sprite_source(clicked_sprite, markers[0])
+                    return True
+
+                has_arrange_marker = self.sprite_has_arrange_marker(clicked_sprite)
+                if has_arrange_marker and not ctrl_held and not shift_held:
+                    arrange_group = self._arrange_group_for_sprite(clicked_sprite)
+                    self.selection_manager.clear_selection()
+                    self.selection_manager._selected.update(arrange_group)
+                    self._sync_property_inspector_selection()
+                    self.open_overrides_editor_for_sprite(clicked_sprite)
+                    return True
 
             if clicked_sprite in selected:
+                if not ctrl_held:
+                    self.open_property_inspector_for_current_selection()
                 # Start dragging selected sprites
                 # Calculate offset from click point to each sprite's center
                 self._dragging_sprites = []
@@ -1117,7 +1165,10 @@ class DevVisualizer:
 
         # Then handle selection (for unselected sprites or empty space)
         if self.selection_manager.handle_mouse_press(x, y, shift):
-            self._sync_property_inspector_selection()
+            if clicked_sprites and not ctrl_held:
+                self.open_property_inspector_for_current_selection()
+            else:
+                self._sync_property_inspector_selection()
             return True
         return False
 
@@ -1339,23 +1390,18 @@ class DevVisualizer:
                 pass
 
     def open_sprite_source(self, sprite: arcade.Sprite, marker: dict) -> None:
-        """Open the editor at the sprite's source marker (VSCode URI scheme).
-
-        This attempts to open VSCode using the file/line URI if available. Falls back
-        to printing the location if the URI can't be opened.
-        """
+        """Open the editor at the sprite's source marker via `code --goto`."""
         import os
-        import webbrowser
+        import subprocess
 
         file = marker.get("file")
         lineno = marker.get("lineno")
         if not file:
             return
-        # Construct vscode URI: vscode://file/<absolute_path>:<line>
         path = os.path.abspath(file)
-        uri = f"vscode://file/{path}:{lineno}"
         try:
-            webbrowser.open(uri)
+            subprocess.Popen(["code", "--goto", f"{path}:{lineno}"])
+            return
         except Exception:
             print(f"Open file at {file}:{lineno}")
 
@@ -1444,42 +1490,193 @@ class DevVisualizer:
             return None
         existing = sprite._source_markers
         for m in existing:
-            if m.get("type") == "arrange":
+            if self._marker_points_to_arrange_call(m):
                 return ArrangeOverrideInspector(m.get("file"), m.get("lineno"))
         return None
+
+    @staticmethod
+    def _marker_points_to_arrange_call(marker: dict) -> bool:
+        if marker.get("type") == "arrange":
+            return True
+        file_path = marker.get("file")
+        lineno = marker.get("lineno")
+        if not file_path or lineno is None:
+            return False
+        try:
+            lineno_int = int(lineno)
+        except (TypeError, ValueError):
+            return False
+        if lineno_int < 1:
+            return False
+        try:
+            lines = Path(file_path).read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            return False
+        if lineno_int > len(lines):
+            return False
+        return "arrange_grid" in lines[lineno_int - 1]
+
+    def sprite_has_arrange_marker(self, sprite: object) -> bool:
+        if not isinstance(sprite, SpriteWithSourceMarkers):
+            return False
+        for marker in sprite._source_markers:
+            if self._marker_points_to_arrange_call(marker):
+                return True
+        return False
+
+    @staticmethod
+    def _arrange_marker_key(marker: dict) -> tuple[str, int] | None:
+        file_path = marker.get("file")
+        lineno = marker.get("lineno")
+        if not file_path or lineno is None:
+            return None
+        try:
+            return (str(file_path), int(lineno))
+        except (TypeError, ValueError):
+            return None
+
+    def _first_arrange_marker(self, sprite: object) -> dict | None:
+        if not isinstance(sprite, SpriteWithSourceMarkers):
+            return None
+        for marker in sprite._source_markers:
+            if self._marker_points_to_arrange_call(marker):
+                return marker
+        return None
+
+    def _arrange_group_for_sprite(self, sprite: object) -> list[arcade.Sprite]:
+        marker = self._first_arrange_marker(sprite)
+        if marker is None:
+            if isinstance(sprite, arcade.Sprite):
+                return [sprite]
+            return []
+        key = self._arrange_marker_key(marker)
+        if key is None:
+            if isinstance(sprite, arcade.Sprite):
+                return [sprite]
+            return []
+        group: list[arcade.Sprite] = []
+        for candidate in self.scene_sprites:
+            if not isinstance(candidate, SpriteWithSourceMarkers):
+                continue
+            for candidate_marker in candidate._source_markers:
+                if not self._marker_points_to_arrange_call(candidate_marker):
+                    continue
+                if self._arrange_marker_key(candidate_marker) == key:
+                    group.append(candidate)
+                    break
+        return group
 
     def open_overrides_panel_for_sprite(self, sprite: object) -> bool:
         """Open the overrides panel for the given sprite (returns True if opened)."""
         return self.overrides_panel.open(sprite)
 
+    def open_overrides_editor_for_sprite(self, sprite: object) -> bool:
+        """Open arrange-grid settings editor inside the property inspector window."""
+        marker = self._first_arrange_marker(sprite)
+        if marker is None:
+            return False
+        marker_key = self._arrange_marker_key(marker)
+        if marker_key is None:
+            return False
+
+        needs_recreate = self._property_inspector_window_needs_recreate()
+        if needs_recreate:
+            self._create_property_inspector_window()
+        if self.property_inspector_window is None:
+            return False
+        was_visible = bool(self.property_inspector_window.visible)
+
+        file_path, lineno = marker_key
+        editor = ArrangeGridEditor(file_path, lineno)
+        group = self._arrange_group_for_sprite(sprite)
+        self.selection_manager.clear_selection()
+        self.selection_manager._selected.update(group)
+        self._sync_property_inspector_selection()
+
+        marker_template = dict(marker)
+
+        def _apply_layout(kwargs: dict[str, float | int]) -> None:
+            nonlocal group
+            group = self._apply_arrange_layout_to_group_live(group, kwargs, marker_template=marker_template)
+
+        self.property_inspector_window.show_arrange_mode(
+            editor,
+            on_apply_layout=_apply_layout,
+        )
+        if needs_recreate or not was_visible:
+            self._position_property_inspector_window()
+            self.property_inspector_window.show_window()
+        # No in-canvas override panel in arrange settings workflow.
+        self.overrides_panel.visible = False
+        return True
+
     def toggle_overrides_panel_for_sprite(self, sprite: object | None = None) -> bool:
         """Toggle the overrides panel. If sprite provided, open for that sprite."""
         return self.overrides_panel.toggle(sprite)
 
-        # Mark sprites previously pointing to these files but not in parsed results as 'red'
-        # Iterate all registered sprites and check existing markers
-        # We can't easily enumerate registry contents, so check all sprites we currently know about
-        # by collecting all sprites from parsed_by_token then find others via position_tag registry introspection
-        # Instead, we will iterate scene_sprites and any sprite with markers pointing to a changed file but
-        # missing from current parsed_by_token results will be marked red
-        changed_files_set = {str(p) for p in changed_files}
-        for sprite in list(self.scene_sprites):
-            if not isinstance(sprite, SpriteWithSourceMarkers):
-                continue
-            existing = sprite._source_markers
-            if not existing:
-                continue
-            # If any existing marker points to a changed file but that file has no current matches -> red
-            updated = []
-            for m in existing:
-                if str(m.get("file")) in changed_files_set and not (parsed_assign_by_token or parsed_arrange_by_token):
-                    updated.append({**m, "status": "red"})
-                else:
-                    # Keep prior marker if unchanged
-                    updated.append(m)
-            sprite._source_markers = updated
+    @staticmethod
+    def _apply_arrange_layout_to_group(sprites: list[arcade.Sprite], kwargs: dict[str, float | int]) -> None:
+        rows = int(kwargs["rows"])
+        cols = int(kwargs["cols"])
+        start_x = float(kwargs["start_x"])
+        start_y = float(kwargs["start_y"])
+        spacing_x = float(kwargs["spacing_x"])
+        spacing_y = float(kwargs["spacing_y"])
+        if rows <= 0 or cols <= 0:
+            return
+        for index, sprite in enumerate(sprites):
+            row = index // cols
+            col = index % cols
+            sprite.center_x = start_x + col * spacing_x
+            sprite.center_y = start_y + row * spacing_y
 
-            # Future action types can be added here
+    def _apply_arrange_layout_to_group_live(
+        self,
+        sprites: list[arcade.Sprite],
+        kwargs: dict[str, float | int],
+        *,
+        marker_template: dict[str, Any],
+    ) -> list[arcade.Sprite]:
+        rows = int(kwargs["rows"])
+        cols = int(kwargs["cols"])
+        if rows <= 0 or cols <= 0:
+            return list(sprites)
+
+        target_count = rows * cols
+        updated = list(sprites)
+        current_count = len(updated)
+        if target_count > current_count and current_count > 0:
+            template = updated[-1]
+            for _ in range(target_count - current_count):
+                clone = self._clone_arrange_sprite(template, marker_template)
+                self.scene_sprites.append(clone)
+                updated.append(clone)
+        elif target_count < current_count:
+            removed = updated[target_count:]
+            for sprite in removed:
+                self.selection_manager._selected.discard(sprite)
+                if sprite in self.scene_sprites:
+                    self.scene_sprites.remove(sprite)
+            updated = updated[:target_count]
+
+        self._apply_arrange_layout_to_group(updated, kwargs)
+        self.selection_manager.clear_selection()
+        self.selection_manager._selected.update(updated)
+        self._sync_property_inspector_selection()
+        return updated
+
+    @staticmethod
+    def _clone_arrange_sprite(template: arcade.Sprite, marker_template: dict[str, Any]) -> arcade.Sprite:
+        clone = arcade.Sprite(template.texture)
+        clone.scale = template.scale
+        clone.center_x = float(template.center_x)
+        clone.center_y = float(template.center_y)
+        clone.angle = float(template.angle)
+        clone.alpha = int(template.alpha)
+        clone.color = template.color
+        clone.visible = bool(template.visible)
+        clone._source_markers = [dict(marker_template)]
+        return clone
 
 
 # Global DevVisualizer instance

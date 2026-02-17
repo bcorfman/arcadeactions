@@ -39,11 +39,20 @@
   - Unhandled keys forward to the main game window handlers
   - Import command reloads scene YAML and reapplies sprite action metadata immediately
   - Uses headless-safe behavior in tests/CI so palette tests do not require a display
+* Source/Arrange Click Behavior:
+  - `Ctrl+Click` on a sprite with source markers opens source at the marker line
+  - Plain `Click` on a normal sprite opens the Sprite Property Inspector in **Sprite Properties** mode
+  - Plain `Click` on a sprite with an `arrange` marker selects the full arrange-grid group and opens the Sprite Property Inspector in **Arrange Grid Settings** mode
 * Sprite Property Inspector Window (Alt+I): Secondary window for live property editing
   - Toggle with Alt+I, independent from F12 edit-mode overlay visibility
   - Edits selected sprite properties in real time (single and multi-select)
+  - Use `Enter` to start editing the highlighted property, type in the input widget, and press `Enter` again to commit
   - Supports expression input for numeric fields (for example `SCREEN_CENTER + 100`)
-  - Includes undo/redo history and copy-as-Python assignment snippets
+  - Use `Escape` to cancel an active edit; `Ctrl+Z` / `Ctrl+Shift+Z` still undo/redo changes
+  - In Arrange Grid Settings mode, edit `rows`, `cols`, `start_x`, `start_y`, `spacing_x`, and `spacing_y` for the selected arrange-grid call
+  - Changing `rows`/`cols` live-resizes the selected arrange group in-scene so sprite count matches `rows * cols`
+  - Closing the inspector from the window titlebar close button is supported; `Alt+I` recreates/reopens it
+  - If `arcade.gui` widget rendering fails on a backend/driver, inspector editing is disabled for that session instead of crashing
 * Edit Mode vs Runtime Mode:
   - Edit Mode: Sprites are static, actions stored as metadata (_action_configs)
   - Entering edit mode (F12 on) freezes sprite `change_x`/`change_y`/`change_angle` motion fields

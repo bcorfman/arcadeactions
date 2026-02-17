@@ -1024,25 +1024,23 @@ When enabled via environment variable, DevVisualizer automatically:
 - **F11**: Toggle palette window (separate window with sprite prototypes)
 - **F8**: Toggle dev command palette window (secondary command UI)
 - **Alt+I**: Toggle sprite property inspector window (live property editing)
-- **O**: Toggle overrides panel for selected sprite (arrange_grid per-cell overrides)
+- **Enter** (in property inspector): Start editing highlighted property, and commit current text input
+- **Escape** (in property inspector): Cancel active property edit (or close window if not editing)
+- **Ctrl+Z / Ctrl+Shift+Z** (in property inspector): Undo/redo property edits
 - **E**: Export scene to YAML (saves to scene.yaml or examples/boss_level.yaml)
 - **I**: Import scene from YAML (loads from scene.yaml, examples/boss_level.yaml, or scenes/new_scene.yaml)
 - **ESC**: Close application (in generated level files)
 - **Mouse**: Click prototypes in palette to spawn, click sprites to select, drag gizmo handles
+- **Ctrl+Left Click** (sprite with source marker): Open source file at marker line
+- **Left Click** (sprite with arrange marker): Select the full arrange-grid group and open arrange-grid settings editor
 - **Shift+Click**: Add/remove from selection
 - **Click+Drag**: Marquee box selection
 
-**Overrides Panel Keyboard Shortcuts** (when panel is open):
-- **Ctrl+Z**: Undo last change
-- **Enter**: Commit current edit or start editing selected override
-- **Escape**: Cancel current edit
-- **X**: Start editing X coordinate
-- **Y**: Start editing Y coordinate
-- **Tab**: Switch between X and Y fields while editing
-- **Backspace**: Delete character while editing
-- **Up/Down arrows**: Navigate through overrides list
-- **Left/Right/Up/Down**: Adjust selected override coordinates by ±1 (when not editing)
-- **Delete**: Remove selected override
+**Arrange Settings Shortcuts** (when Arrange Grid Settings mode is open):
+- **Up/Down arrows**: Select one of `rows`, `cols`, `start_x`, `start_y`, `spacing_x`, `spacing_y`
+- **Enter**: Start editing selected setting, then commit edited value
+- **Escape**: Cancel active edit (or close window if not editing)
+- **Ctrl+Z / Ctrl+Shift+Z**: Undo/redo setting edits
 
 ### Parameters
 
@@ -1101,14 +1099,15 @@ When enabled via environment variable, DevVisualizer automatically:
 - **ctx** (`DevContext`): DevContext with scene_sprites and registry access
 - Returns: `arcade.SpriteList` with loaded sprites
 
-### Arrange Grid Overrides Panel
+### Arrange Grid Overrides Editor
 
-DevVisualizer provides a panel for editing per-cell position overrides in `arrange_grid()` calls. This allows you to fine-tune individual sprite positions within a grid formation.
+DevVisualizer repurposes the Sprite Property Inspector window as an Arrange Grid Settings editor for `arrange_grid()`-linked sprites.
 
-**Opening the Overrides Panel:**
-1. Select a sprite that was created from an `arrange_grid()` call
-2. Press **O** to open the overrides panel
-3. The panel shows all existing overrides for that grid call
+**Opening the Overrides Editor:**
+1. Select or click a sprite linked to an `arrange_grid()` call
+2. Plain left-click an arrange-linked sprite
+3. The inspector switches to **Arrange Grid Settings** mode
+4. Edit `rows`, `cols`, `start_x`, `start_y`, `spacing_x`, and `spacing_y` directly
 
 **Using Position Tags:**
 To enable code sync and override editing, tag your sprites with stable position IDs:
@@ -1158,7 +1157,7 @@ for call in arrange_calls:
 9. **Use symbolic bounds**: Makes YAML files more readable and maintainable
 10. **Test round-trip**: Verify export → import → export maintains all data
 11. **Tag sprites for code sync**: Use `@positioned()` decorator or `tag_sprite()` to enable automatic source code updates
-12. **Use overrides panel for fine-tuning**: Press O on selected sprites from arrange_grid calls to edit per-cell positions
+12. **Use arrange settings editor for grid tuning**: Left-click sprites from arrange_grid calls to edit rows/cols/start/spacing values
 
 ### Example
 

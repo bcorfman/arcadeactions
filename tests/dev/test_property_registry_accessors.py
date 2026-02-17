@@ -64,6 +64,7 @@ def test_editor_type_inference_for_common_custom_types(test_sprite):
 
 def test_editor_type_defaults_to_text_for_unknown_custom_value(test_sprite):
     """Unknown custom value types should use text editor fallback."""
+
     class _CustomValue:
         pass
 
