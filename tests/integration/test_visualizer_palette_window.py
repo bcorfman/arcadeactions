@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 import arcade
 import pytest
 
@@ -11,29 +9,21 @@ from arcadeactions.dev.visualizer import DevVisualizer
 
 
 @pytest.fixture(autouse=True)
-def prevent_window_showing_in_ci(monkeypatch):
-    """Prevent palette windows from showing when CI=true."""
-    if os.environ.get("CI") == "true":
-        # Mock set_visible to prevent windows from actually showing in CI
-        from arcadeactions.dev.palette_window import PaletteWindow
+def prevent_window_showing(monkeypatch):
+    """Prevent palette windows from being shown by integration tests."""
+    from arcadeactions.dev.palette_window import PaletteWindow
 
-        original_set_visible = PaletteWindow.set_visible
+    def mock_set_visible(self, visible: bool):
+        """Update palette visibility state without mapping an OS window."""
+        self._is_visible = bool(visible)
+        ui_manager = getattr(self, "_ui_manager", None)
+        if ui_manager is not None:
+            if visible:
+                ui_manager.enable()
+            else:
+                ui_manager.disable()
 
-        def mock_set_visible(self, visible: bool):
-            """Mock set_visible that only updates internal state, doesn't show window."""
-            # In headless mode, just update tracked state (existing behavior)
-            if getattr(self, "_is_headless", False):
-                self._is_visible = bool(visible)
-                return
-
-            # For non-headless windows in CI, update state but don't actually show
-            # This prevents windows from popping up during tests
-            self._is_visible = bool(visible)
-            # Don't call super().set_visible() - this prevents the window from actually showing
-
-        # Patch PaletteWindow.set_visible when CI=true
-        monkeypatch.setattr(PaletteWindow, "set_visible", mock_set_visible)
-
+    monkeypatch.setattr(PaletteWindow, "set_visible", mock_set_visible)
     yield
 
 

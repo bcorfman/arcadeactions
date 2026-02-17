@@ -109,7 +109,9 @@ class TestApplyMetadataActionsActionTypes:
         """Test FadeTo action type."""
         mock_fade = mocker.patch("arcadeactions.fade_to")
 
-        sprite_with_configs._action_configs = [{"action_type": "FadeTo", "target_alpha": 0, "speed": 10, "condition": "infinite"}]
+        sprite_with_configs._action_configs = [
+            {"action_type": "FadeTo", "target_alpha": 0, "speed": 10, "condition": "infinite"}
+        ]
 
         dev_visualizer.apply_metadata_actions(sprite_with_configs)
 

@@ -1,6 +1,6 @@
 import os
+import subprocess
 import textwrap
-import webbrowser
 from unittest import mock
 
 import arcade
@@ -43,11 +43,19 @@ def test_on_reload_marks_tagged_sprite(tmp_path):
     assert isinstance(m["lineno"], int)
 
 
-def test_open_sprite_source_calls_vscode(monkeypatch, tmp_path):
-    # Create marker and test webbrowser called with vscode uri
+def test_open_sprite_source_calls_code_goto(tmp_path):
+    # Create marker and verify VS Code CLI receives file:line.
     marker = {"file": str(tmp_path / "x.py"), "lineno": 12}
     dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList())
-    with mock.patch.object(webbrowser, "open") as mocked:
+    with mock.patch.object(subprocess, "Popen") as popen_mock:
         dev_viz.open_sprite_source(None, marker)
-        expected = f"vscode://file/{os.path.abspath(marker['file'])}:{marker['lineno']}"
-        mocked.assert_called_with(expected)
+        popen_mock.assert_called_once_with(["code", "--goto", f"{os.path.abspath(marker['file'])}:12"])
+
+
+def test_open_sprite_source_prints_fallback_when_code_cli_fails(tmp_path):
+    marker = {"file": str(tmp_path / "x.py"), "lineno": 12}
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList())
+    with mock.patch.object(subprocess, "Popen", side_effect=OSError("missing")):
+        with mock.patch("builtins.print") as print_mock:
+            dev_viz.open_sprite_source(None, marker)
+            print_mock.assert_called_once_with(f"Open file at {marker['file']}:{marker['lineno']}")

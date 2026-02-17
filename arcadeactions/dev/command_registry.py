@@ -102,4 +102,3 @@ class CommandRegistry:
             return bool(command.handler(context))
         except Exception:
             return False
-

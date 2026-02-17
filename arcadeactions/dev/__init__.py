@@ -35,14 +35,14 @@ from .command_palette import CommandPaletteWindow
 from .command_registry import CommandExecutionContext, CommandRegistry
 from .palette import PaletteSidebar
 from .palette_window import PaletteWindow
-from .property_history import PropertyHistory
-from .property_inspector import InMemoryClipboard, PropertyInspectorWindow, SpritePropertyInspector
-from .property_registry import PropertyDefinition, SpritePropertyRegistry
 from .presets import (
     ActionPresetRegistry,
     get_preset_registry,
     register_preset,
 )
+from .property_history import PropertyHistory
+from .property_inspector import PropertyInspectorWindow, SpritePropertyInspector
+from .property_registry import PropertyDefinition, SpritePropertyRegistry
 from .prototype_registry import (
     DevContext,
     SpritePrototypeRegistry,
@@ -84,7 +84,6 @@ __all__ = [
     "SpritePropertyRegistry",
     "SpritePropertyInspector",
     "PropertyInspectorWindow",
-    "InMemoryClipboard",
     "SelectionManager",
     "BoundaryGizmo",
     "BoundaryHandle",

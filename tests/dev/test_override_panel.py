@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import arcade
 import pytest
 
 from arcadeactions.dev.visualizer import DevVisualizer
@@ -522,9 +523,8 @@ class TestOverridePanelDrawing:
 
     def test_draw_not_visible(self, window, mock_inspector, mock_window, mocker):
         """Test draw does nothing when not visible."""
-        mock_draw_rect = mocker.patch("arcade.draw_rect_filled", create=True)
+        mock_draw_rect = mocker.patch("arcade.draw_lbwh_rectangle_filled", create=True)
         mock_draw_text = mocker.patch("arcade.draw_text", create=True)
-        mock_color = mocker.patch("arcade.color_from_hex_string", return_value=(34, 40, 42), create=True)
 
         dev_viz = DevVisualizer()
         dev_viz.window = mock_window
@@ -540,9 +540,8 @@ class TestOverridePanelDrawing:
 
     def test_draw_no_inspector(self, window, mock_window, mocker):
         """Test draw does nothing when no inspector."""
-        mock_draw_rect = mocker.patch("arcade.draw_rect_filled", create=True)
+        mock_draw_rect = mocker.patch("arcade.draw_lbwh_rectangle_filled", create=True)
         mock_draw_text = mocker.patch("arcade.draw_text", create=True)
-        mock_color = mocker.patch("arcade.color_from_hex_string", return_value=(34, 40, 42), create=True)
 
         dev_viz = DevVisualizer()
         dev_viz.window = mock_window
@@ -558,9 +557,8 @@ class TestOverridePanelDrawing:
 
     def test_draw_visible_renders_rows_and_edit_state(self, window, mock_inspector, mock_window, mocker):
         """Test draw renders rows and edit buffer when panel is visible."""
-        mock_draw_rect = mocker.patch("arcade.draw_rect_filled", create=True)
+        mock_draw_rect = mocker.patch("arcade.draw_lbwh_rectangle_filled", create=True)
         mock_draw_text = mocker.patch("arcade.draw_text", create=True)
-        mock_color = mocker.patch("arcade.color_from_hex_string", return_value=(34, 40, 42), create=True)
 
         dev_viz = DevVisualizer()
         dev_viz.window = mock_window
@@ -665,3 +663,104 @@ class TestOverridePanelErrors:
 
         with pytest.raises(RuntimeError, match="OverridesPanel is not open"):
             panel.remove_override(0, 0)
+
+
+@pytest.mark.integration
+class TestOverridePanelAdditionalCoverage:
+    """Target branches used by arrange-grid inspector wiring."""
+
+    def test_parse_grid_dimension_handles_none_invalid_and_lower_bound(self, window):
+        dev_viz = DevVisualizer()
+        panel = dev_viz.overrides_panel
+
+        assert panel._parse_grid_dimension(None, 3) == 3
+        assert panel._parse_grid_dimension("bad", 4) == 4
+        assert panel._parse_grid_dimension("0", 4) == 1
+        assert panel._parse_grid_dimension("-2", 4) == 1
+
+    def test_list_cells_builds_full_grid_with_overridden_flags(self, window, mocker):
+        dev_viz = DevVisualizer()
+        panel = dev_viz.overrides_panel
+        inspector = mocker.Mock()
+        inspector.list_overrides.return_value = [{"row": 0, "col": 1, "x": 15, "y": 25}]
+        panel.inspector = inspector
+        panel._grid_rows = 2
+        panel._grid_cols = 2
+
+        cells = panel.list_cells()
+
+        assert len(cells) == 4
+        assert cells[0] == {"row": 0, "col": 0, "x": 0, "y": 0, "overridden": False}
+        assert cells[1] == {"row": 0, "col": 1, "x": 15, "y": 25, "overridden": True}
+
+    def test_draw_handles_missing_window_and_draw_fallback(self, window, mocker):
+        draw_rect = mocker.patch("arcade.draw_lbwh_rectangle_filled", side_effect=RuntimeError("no lbwh"), create=True)
+        draw_rect_filled = mocker.patch("arcade.draw_rect_filled", create=True)
+        draw_text = mocker.patch("arcade.draw_text", create=True)
+
+        dev_viz = DevVisualizer()
+        panel = dev_viz.overrides_panel
+        panel.visible = True
+        panel.inspector = mocker.Mock()
+        panel.inspector.list_overrides.return_value = [{"row": 0, "col": 0, "x": 1, "y": 2}]
+        dev_viz.window = None
+        panel.draw()
+        draw_rect.assert_not_called()
+
+        dev_viz.window = mocker.Mock(width=800, height=600)
+        panel.inspector.list_overrides.side_effect = RuntimeError("boom")
+        panel.draw()
+
+        assert draw_rect.called
+        draw_rect_filled.assert_called_once()
+        assert any("Overrides error: boom" in c.args[0] for c in draw_text.call_args_list if c.args)
+
+    def test_open_and_toggle_use_marker_kwargs_and_cached_sprite(self, window, mocker):
+        dev_viz = DevVisualizer()
+        panel = dev_viz.overrides_panel
+        inspector = mocker.Mock()
+        inspector.list_overrides.return_value = []
+        mocker.patch.object(dev_viz, "get_override_inspector_for_sprite", return_value=inspector)
+        mocker.patch.object(dev_viz, "_marker_points_to_arrange_call", return_value=True)
+
+        sprite = arcade.SpriteSolidColor(width=8, height=8, color=arcade.color.RED)
+        sprite._source_markers = [{"file": "scene.py", "lineno": 9, "type": "arrange", "kwargs": {"rows": "2", "cols": "3"}}]
+
+        assert panel.open(sprite) is True
+        assert panel.visible is True
+        assert panel._grid_rows == 2
+        assert panel._grid_cols == 3
+        assert panel.toggle() is False
+        assert panel.visible is False
+
+    def test_toggle_without_sprite_returns_false(self, window):
+        dev_viz = DevVisualizer()
+        panel = dev_viz.overrides_panel
+        panel.sprite = None
+
+        assert panel.toggle(None) is False
+        assert panel.is_open() is False
+
+    def test_list_overrides_records_error_and_delegate_methods(self, window, mocker):
+        dev_viz = DevVisualizer()
+        panel = dev_viz.overrides_panel
+        inspector = mocker.Mock()
+        inspector.list_overrides.side_effect = RuntimeError("explode")
+        panel.inspector = inspector
+
+        assert panel.list_overrides() == []
+        assert "Overrides error: explode" in panel._last_error
+
+        inspector.list_overrides.side_effect = None
+        inspector.list_overrides.return_value = [{"row": 1, "col": 2, "x": 3, "y": 4}]
+        assert panel.list_overrides() == [{"row": 1, "col": 2, "x": 3, "y": 4}]
+        assert panel._last_error == ""
+
+        panel.handle_key("CTRL+SHIFT+Z")
+        assert "Redo is not available" in panel._last_error
+
+        panel.inspector = mocker.Mock()
+        panel.set_override(1, 2, 3, 4)
+        panel.inspector.set_override.assert_called_once_with(1, 2, 3, 4)
+        panel.remove_override(1, 2)
+        panel.inspector.remove_override.assert_called_once_with(1, 2)

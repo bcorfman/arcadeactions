@@ -203,8 +203,8 @@ fade_to(sprite, target_alpha=50, speed=4)
 - **YAML Templates** - Export/import scenes with round-trip editing support
 - **Code Sync** - Automatic source code updates from visual edits
 - **Position Tagging** - Stable IDs for code↔visual mapping
-- **Arrange Grid Overrides** - Per-cell position editing for grid formations
-- **Sprite Property Inspector** - Live property editing window with Alt+I, expressions, undo/redo, and copy-as-Python
+- **Arrange Grid Settings Inspector** - Edit `arrange_grid()` settings (`rows`, `cols`, `start_x`, `start_y`, `spacing_x`, `spacing_y`) directly in the Sprite Property Inspector
+- **Sprite Property Inspector** - Live property editing window opened by sprite click (or Alt+I), with expressions, undo/redo, and copy-as-Python
 - See [Pattern 12-19](#development-visualizer-actionsdev) for detailed usage
 
 ## Animation Approaches: Ease vs TweenUntil
@@ -2645,25 +2645,20 @@ for call in arrange_calls:
     print(f"arrange_grid at line {call.lineno} with kwargs: {call.kwargs}")
 ```
 
-### Pattern 18: Arrange Grid Overrides Panel
+### Pattern 18: Arrange Grid Settings in Sprite Property Inspector
 
-DevVisualizer provides a panel for editing per-cell position overrides in `arrange_grid()` calls. This allows fine-tuning individual sprite positions within a grid formation.
+DevVisualizer edits `arrange_grid()` call settings directly in the Sprite Property Inspector window instead of a separate in-canvas overrides panel.
 
-**Opening the Overrides Panel:**
-1. Select a sprite that was created from an `arrange_grid()` call
-2. Press **O** to open the overrides panel
-3. The panel shows all existing overrides for that grid call
+**Opening Arrange Grid Settings:**
+1. In F12 edit mode, left-click a sprite that came from an `arrange_grid()` call
+2. DevVisualizer selects the full arrange group and opens the Sprite Property Inspector in **Arrange Grid Settings** mode
+3. The inspector lists `rows`, `cols`, `start_x`, `start_y`, `spacing_x`, and `spacing_y`
 
-**Overrides Panel Keyboard Shortcuts:**
-- **Ctrl+Z**: Undo last change
-- **Enter**: Commit current edit or start editing selected override
+**Keyboard Workflow:**
+- **Enter**: Start editing selected setting / commit edit
 - **Escape**: Cancel current edit
-- **X**: Start editing X coordinate
-- **Y**: Start editing Y coordinate
-- **Tab**: Switch between X and Y fields while editing
-- **Up/Down arrows**: Navigate through overrides list
-- **Left/Right/Up/Down**: Adjust selected override coordinates by ±1 (when not editing)
-- **Delete**: Remove selected override
+- **Up/Down arrows**: Select setting row
+- **Ctrl+Z / Ctrl+Shift+Z**: Undo / redo
 
 ### Edit Mode vs Runtime Mode
 

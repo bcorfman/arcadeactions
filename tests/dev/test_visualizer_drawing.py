@@ -589,82 +589,6 @@ class TestDrawSourceMarkers(ActionTestBase):
 
 
 @_skip_if_no_display
-class TestDrawOverridesPanel(ActionTestBase):
-    """Test suite for overrides panel drawing."""
-
-    def test_draw_overrides_panel_if_exists(self, window, test_sprite_list, mocker):
-        """Test that overrides panel is drawn if it exists."""
-        dev_viz = DevVisualizer(scene_sprites=test_sprite_list, window=window)
-        dev_viz.visible = True
-        window._context = mocker.MagicMock()
-
-        # Create mock overrides panel
-        mock_panel = mocker.MagicMock()
-        dev_viz.overrides_panel = mock_panel
-
-        mocker.patch.object(dev_viz._indicator_text, "draw")
-        mocker.patch.object(dev_viz.selection_manager, "draw")
-
-        dev_viz.draw()
-
-        # Verify panel was drawn
-        mock_panel.draw.assert_called_once()
-
-    def test_draw_overrides_panel_skips_if_not_exists(self, window, test_sprite_list, mocker):
-        """Test that overrides panel is skipped if it doesn't exist."""
-        # Document current behavior: hasattr check
-        dev_viz = DevVisualizer(scene_sprites=test_sprite_list, window=window)
-        dev_viz.visible = True
-        window._context = mocker.MagicMock()
-
-        # Remove overrides_panel if it exists (it might be initialized)
-        if hasattr(dev_viz, "overrides_panel"):
-            original_panel = dev_viz.overrides_panel
-            delattr(dev_viz, "overrides_panel")
-
-        mocker.patch.object(dev_viz._indicator_text, "draw")
-        mocker.patch.object(dev_viz.selection_manager, "draw")
-
-        # Should not raise
-        dev_viz.draw()
-
-        # Restore if it existed
-        if "original_panel" in locals():
-            dev_viz.overrides_panel = original_panel
-
-    def test_draw_overrides_panel_skips_if_none(self, window, test_sprite_list, mocker):
-        """Test that overrides panel is skipped if it is None."""
-        dev_viz = DevVisualizer(scene_sprites=test_sprite_list, window=window)
-        dev_viz.visible = True
-        window._context = mocker.MagicMock()
-
-        dev_viz.overrides_panel = None
-
-        mocker.patch.object(dev_viz._indicator_text, "draw")
-        mocker.patch.object(dev_viz.selection_manager, "draw")
-
-        # Should not raise
-        dev_viz.draw()
-
-    def test_draw_overrides_panel_handles_exceptions_gracefully(self, window, test_sprite_list, mocker):
-        """Test that overrides panel drawing exceptions are caught gracefully."""
-        dev_viz = DevVisualizer(scene_sprites=test_sprite_list, window=window)
-        dev_viz.visible = True
-        window._context = mocker.MagicMock()
-
-        # Create mock panel that raises exception
-        mock_panel = mocker.MagicMock()
-        mock_panel.draw.side_effect = Exception("Panel draw failed")
-        dev_viz.overrides_panel = mock_panel
-
-        mocker.patch.object(dev_viz._indicator_text, "draw")
-        mocker.patch.object(dev_viz.selection_manager, "draw")
-
-        # Should not raise, should continue
-        dev_viz.draw()
-
-
-@_skip_if_no_display
 class TestDrawErrorHandling(ActionTestBase):
     """Test suite for overall error handling in draw method."""
 
@@ -702,10 +626,6 @@ class TestDrawErrorHandling(ActionTestBase):
         test_sprite_list[0].center_x = 100
         test_sprite_list[0].center_y = 100
 
-        # Set up overrides panel
-        mock_panel = mocker.MagicMock()
-        dev_viz.overrides_panel = mock_panel
-
         # Mock all drawing methods
         mock_text_draw = mocker.patch.object(dev_viz._indicator_text, "draw")
         mock_selection_draw = mocker.patch.object(dev_viz.selection_manager, "draw")
@@ -719,7 +639,6 @@ class TestDrawErrorHandling(ActionTestBase):
         mock_text_draw.assert_called_once()
         mock_selection_draw.assert_called_once()
         mock_gizmo.draw.assert_called_once()
-        mock_panel.draw.assert_called_once()
         mock_draw_rect.assert_called()
         mock_text_class.assert_called()
         mock_text_instance.draw.assert_called()

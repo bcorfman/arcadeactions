@@ -5,7 +5,7 @@ from __future__ import annotations
 import arcade
 
 from arcadeactions.dev.property_history import PropertyHistory
-from arcadeactions.dev.property_inspector import InMemoryClipboard, SpritePropertyInspector
+from arcadeactions.dev.property_inspector import SpritePropertyInspector
 from arcadeactions.dev.property_registry import SpritePropertyRegistry
 
 
@@ -15,20 +15,18 @@ class _WindowStub:
         self.height = height
 
 
-def _make_inspector() -> tuple[SpritePropertyInspector, InMemoryClipboard]:
-    clipboard = InMemoryClipboard()
+def _make_inspector() -> SpritePropertyInspector:
     inspector = SpritePropertyInspector(
         property_registry=SpritePropertyRegistry(),
         history=PropertyHistory(max_changes_per_sprite=20),
-        clipboard=clipboard,
         window=_WindowStub(),
     )
-    return inspector, clipboard
+    return inspector
 
 
 def test_edit_center_x_updates_sprite_immediately(test_sprite):
     """Applying an edited value should immediately update the sprite property."""
-    inspector, _ = _make_inspector()
+    inspector = _make_inspector()
     inspector.set_selection([test_sprite])
 
     inspector.apply_property_text("center_x", "420")
@@ -41,7 +39,7 @@ def test_multi_select_angle_edit_updates_all_sprites():
     sprite_a = arcade.SpriteSolidColor(width=8, height=8, color=arcade.color.RED)
     sprite_b = arcade.SpriteSolidColor(width=8, height=8, color=arcade.color.BLUE)
 
-    inspector, _ = _make_inspector()
+    inspector = _make_inspector()
     inspector.set_selection([sprite_a, sprite_b])
 
     inspector.apply_property_text("angle", "45")
@@ -52,7 +50,7 @@ def test_multi_select_angle_edit_updates_all_sprites():
 
 def test_expression_support_uses_screen_center_constant(test_sprite):
     """Numeric expressions should evaluate with SCREEN_CENTER constants."""
-    inspector, _ = _make_inspector()
+    inspector = _make_inspector()
     inspector.set_selection([test_sprite])
 
     inspector.apply_property_text("center_x", "SCREEN_CENTER + 100")
@@ -61,8 +59,8 @@ def test_expression_support_uses_screen_center_constant(test_sprite):
 
 
 def test_copy_as_python_generates_assignments_for_selection(test_sprite):
-    """Copy helper should emit Python assignment lines and write to clipboard."""
-    inspector, clipboard = _make_inspector()
+    """Copy helper should emit Python assignment lines."""
+    inspector = _make_inspector()
     test_sprite.center_x = 410
     test_sprite.angle = 30
     inspector.set_selection([test_sprite])
@@ -71,12 +69,11 @@ def test_copy_as_python_generates_assignments_for_selection(test_sprite):
 
     assert "sprite.center_x = 410" in snippet
     assert "sprite.angle = 30" in snippet
-    assert clipboard.paste() == snippet
 
 
 def test_undo_redo_property_edits(test_sprite):
     """Inspector undo/redo should replay recorded property edits."""
-    inspector, _ = _make_inspector()
+    inspector = _make_inspector()
     inspector.set_selection([test_sprite])
     start_x = float(test_sprite.center_x)
 
@@ -92,49 +89,34 @@ def test_undo_redo_property_edits(test_sprite):
 
 def test_apply_property_text_returns_false_when_selection_is_empty():
     """No selection should result in no-op edits."""
-    inspector, _ = _make_inspector()
+    inspector = _make_inspector()
 
     assert inspector.apply_property_text("center_x", "100") is False
 
 
 def test_copy_selection_as_python_empty_selection_returns_empty():
     """Copy helper should return empty snippet when nothing is selected."""
-    inspector, clipboard = _make_inspector()
+    inspector = _make_inspector()
 
     snippet = inspector.copy_selection_as_python()
 
     assert snippet == ""
-    assert clipboard.paste() == ""
 
 
 def test_copy_current_property_handles_no_current_property_or_selection(test_sprite):
     """Copy-current should return empty when no current property/selection exists."""
-    inspector, clipboard = _make_inspector()
+    inspector = _make_inspector()
 
     assert inspector.copy_current_property() == ""
-    assert clipboard.paste() == ""
 
     inspector.set_selection([test_sprite])
     inspector.set_selection([])
     assert inspector.copy_current_property() == ""
 
 
-def test_paste_assignment_valid_and_invalid_paths(test_sprite):
-    """Paste-assignment should reject invalid syntax and apply valid syntax."""
-    inspector, clipboard = _make_inspector()
-    inspector.set_selection([test_sprite])
-
-    assert inspector.paste_assignment("not_an_assignment") is False
-    assert inspector.paste_assignment("foo = 1") is False
-
-    clipboard.copy("sprite.center_x = 321")
-    assert inspector.paste_from_clipboard() is True
-    assert test_sprite.center_x == 321
-
-
 def test_move_active_property_and_visibility_helpers(test_sprite):
     """Selection/property navigation helpers should be stable for empty/non-empty lists."""
-    inspector, _ = _make_inspector()
+    inspector = _make_inspector()
 
     assert inspector.current_property() is None
     inspector.move_active_property(1)
@@ -153,10 +135,48 @@ def test_move_active_property_and_visibility_helpers(test_sprite):
 
 def test_undo_uses_last_non_empty_selection(test_sprite):
     """Undo/redo should still work after selection becomes empty."""
-    inspector, _ = _make_inspector()
+    inspector = _make_inspector()
     inspector.set_selection([test_sprite])
     inspector.apply_property_text("center_x", "350")
     inspector.set_selection([])
 
     assert inspector.undo() is True
     assert inspector.redo() is True
+
+
+def test_current_property_value_text_and_copy_current_property_for_string_values():
+    """String values should be represented with Python repr quoting."""
+    sprite = arcade.SpriteSolidColor(width=8, height=8, color=arcade.color.RED)
+    sprite.position_id = "enemy_1"
+    inspector = _make_inspector()
+    inspector.set_selection([sprite])
+
+    names = [p.name for p in inspector.visible_properties()]
+    assert "position_id" in names
+    while inspector.current_property() and inspector.current_property().name != "position_id":
+        inspector.move_active_property(1)
+
+    assert inspector.current_property_value_text() == "'enemy_1'"
+    assert inspector.copy_current_property() == "sprite.position_id = 'enemy_1'"
+
+
+def test_property_value_returns_none_without_selection():
+    """property_value should return None when nothing is selected."""
+    inspector = _make_inspector()
+    assert inspector.property_value("center_x") is None
+
+
+def test_expression_names_fallback_without_window():
+    """Expression constants should resolve to zeroes when window context is absent."""
+    inspector = SpritePropertyInspector(
+        property_registry=SpritePropertyRegistry(),
+        history=PropertyHistory(max_changes_per_sprite=20),
+        window=None,
+    )
+
+    names_x = inspector._expression_names("center_x")
+    names_y = inspector._expression_names("center_y")
+
+    assert names_x["SCREEN_WIDTH"] == 0.0
+    assert names_x["SCREEN_CENTER"] == 0.0
+    assert names_y["SCREEN_HEIGHT"] == 0.0

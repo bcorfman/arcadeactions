@@ -19,22 +19,19 @@ class _StubDevViz:
     def __init__(self, *, selected: list[object] | None = None, toggle_result: bool = False) -> None:
         self.selection_manager = _StubSelectionManager(selected=selected)
         self.scene_sprites = []
-        self.overrides_panel = object()
-        self._toggle_result = toggle_result
-        self.toggle_calls: list[object | None] = []
+        self.overrides_panel = None
 
-    def toggle_overrides_panel_for_sprite(self, sprite: object | None = None) -> bool:
-        self.toggle_calls.append(sprite)
-        return self._toggle_result
+    def toggle_palette(self) -> None:
+        return None
+
+    def toggle_command_palette(self) -> None:
+        return None
 
 
-def test_handle_key_press_o_reports_when_selected_sprite_is_not_override_compatible(capsys):
-    """Pressing O with selected sprite should print warning if panel toggle fails."""
-    sprite = object()
-    dev_viz = _StubDevViz(selected=[sprite], toggle_result=False)
+def test_handle_key_press_o_is_unhandled():
+    """Pressing O should return False (no reserved behavior)."""
+    dev_viz = _StubDevViz()
 
     handled = visualizer_keys.handle_key_press(dev_viz, arcade.key.O, 0)
 
-    assert handled is True
-    assert dev_viz.toggle_calls == [sprite]
-    assert "Overrides panel unavailable" in capsys.readouterr().out
+    assert handled is False

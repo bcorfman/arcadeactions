@@ -7,9 +7,6 @@ from typing import Any
 
 import arcade
 
-from arcadeactions.dev import overrides_input
-from arcadeactions.dev.visualizer_protocols import SpriteWithSourceMarkers
-
 
 def handle_key_press(dev_viz: Any, key: int, modifiers: int) -> bool:
     if key == arcade.key.I and modifiers & arcade.key.MOD_ALT:
@@ -24,12 +21,6 @@ def handle_key_press(dev_viz: Any, key: int, modifiers: int) -> bool:
         dev_viz.toggle_command_palette()
         return True
 
-    if key == arcade.key.O:
-        return _toggle_overrides_panel(dev_viz)
-
-    if overrides_input.handle_overrides_panel_key(dev_viz.overrides_panel, key, modifiers):
-        return True
-
     if key == arcade.key.E:
         return _export_scene(dev_viz)
 
@@ -40,28 +31,6 @@ def handle_key_press(dev_viz: Any, key: int, modifiers: int) -> bool:
         return _delete_selected(dev_viz)
 
     return False
-
-
-def _toggle_overrides_panel(dev_viz: Any) -> bool:
-    selected = dev_viz.selection_manager.get_selected()
-    sprite_to_open = None
-    if not selected:
-        for sprite in dev_viz.scene_sprites:
-            if isinstance(sprite, SpriteWithSourceMarkers):
-                markers = sprite._source_markers
-                if any(m.get("type") == "arrange" for m in markers):
-                    sprite_to_open = sprite
-                    break
-        if sprite_to_open is None:
-            print("⚠ Overrides panel unavailable: no arrange-grid source marker found in current scene.")
-            return True
-    else:
-        sprite_to_open = selected[0]
-
-    opened = dev_viz.toggle_overrides_panel_for_sprite(sprite_to_open)
-    if not opened:
-        print("⚠ Overrides panel unavailable: selected sprite is not linked to an arrange-grid source marker.")
-    return True
 
 
 def _export_scene(dev_viz: Any) -> bool:
