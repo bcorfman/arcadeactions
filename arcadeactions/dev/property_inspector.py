@@ -176,9 +176,14 @@ class PropertyInspectorWindow(arcade.Window):
         height: int = 420,
         title: str = "Sprite Property Inspector",
     ) -> None:
+        # Pyglet/Arcade can trigger set_visible during native window creation.
+        # Define visibility/UI fields up-front so visibility hooks are safe.
         self._is_headless = False
         self._is_visible = False
         self._is_closed = False
+        self._ui_manager: gui.UIManager | None = None
+        self._root_layout: gui.UIAnchorLayout | None = None
+        self._editor_input: gui.UIInputText | None = None
         try:
             super().__init__(width=width, height=height, title=title, resizable=True, visible=False)
         except (GLException, MissingFunctionException, RuntimeError, OSError):
@@ -197,9 +202,6 @@ class PropertyInspectorWindow(arcade.Window):
         self._arrange_on_apply_layout: Callable[[dict[str, float | int]], None] | None = None
         self._widget_draw_failures = 0
         self._pending_caret_enforce_frames = 0
-        self._ui_manager: gui.UIManager | None = None
-        self._root_layout: gui.UIAnchorLayout | None = None
-        self._editor_input: gui.UIInputText | None = None
 
         self.background_color = (26, 26, 34)
         self._title_text = None
