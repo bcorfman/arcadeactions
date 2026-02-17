@@ -548,6 +548,20 @@ def test_set_visible_swallows_super_errors(mocker):
     assert window.visible is True
 
 
+def test_set_visible_enables_and_disables_ui_manager(mocker):
+    """set_visible should forward enabled/disabled state to UI manager when present."""
+    window, _ = _create_window()
+    window._is_headless = False
+    window._ui_manager = mocker.MagicMock()
+    mocker.patch.object(inspector_module.arcade.Window, "set_visible", return_value=None)
+
+    window.set_visible(True)
+    window.set_visible(False)
+
+    window._ui_manager.enable.assert_called_once_with()
+    window._ui_manager.disable.assert_called_once_with()
+
+
 def test_enter_starts_and_commits_edit_flow(test_sprite):
     """Enter should start editing, then commit typed text on second Enter."""
     window, inspector = _create_window()
@@ -872,3 +886,198 @@ def test_arrange_mode_draw_handles_settings_load_errors():
     window.on_draw()
 
     assert "arrange settings unavailable" in window._input_error
+
+
+def test_show_properties_mode_resets_title_and_value_text(mocker):
+    """Switching back to properties mode should restore title/value labels."""
+    window, _ = _create_window()
+    window._title_text = mocker.MagicMock()
+    window._value_text = mocker.MagicMock()
+    window._mode = "arrange"
+    window._arrange_editor = _ArrangeEditorStub()
+
+    window.show_properties_mode()
+
+    assert window._mode == "properties"
+    assert window._arrange_editor is None
+    assert window._title_text.text == "Sprite Properties"
+    assert window._value_text.text == ""
+
+
+def test_safe_arrange_settings_returns_empty_without_editor():
+    """safe arrange settings should return empty list when no editor is attached."""
+    window, _ = _create_window()
+    window._arrange_editor = None
+
+    assert window._safe_arrange_settings() == []
+
+
+def test_enforce_pending_caret_position_resets_when_not_editing():
+    """Pending caret enforcement should clear itself when editor is no longer active."""
+    window, _ = _create_window()
+    window._is_headless = False
+    window._editor_input = inspector_module.gui.UIInputText(width=120, height=24, text="12")
+    window._editing = False
+    window._pending_caret_enforce_frames = 2
+
+    window._enforce_pending_caret_position()
+
+    assert window._pending_caret_enforce_frames == 0
+
+
+def test_start_edit_fails_when_editor_widget_missing_in_headless_mode():
+    """Start edit should report unavailable-widget error when no input widget exists."""
+    window, _ = _create_window()
+    window._is_headless = True
+    window._editor_input = None
+
+    started = window._start_edit()
+
+    assert started is False
+    assert "Widget editing unavailable" in window._input_error
+
+
+def test_start_edit_properties_mode_returns_false_without_current_property():
+    """Properties mode should not enter edit state without an active property."""
+    window, inspector = _create_window()
+    window._is_headless = False
+    window._editor_input = inspector_module.gui.UIInputText(width=120, height=24, text="")
+    inspector.current_property = lambda: None
+
+    assert window._start_edit() is False
+    assert window._editing is False
+
+
+def test_start_edit_handles_sync_exceptions():
+    """Sync exceptions should surface as input_error and abort editing."""
+    window, _ = _create_window()
+    window._is_headless = False
+    window._editor_input = inspector_module.gui.UIInputText(width=120, height=24, text="")
+    window._sync_editor_text_from_selection = lambda: (_ for _ in ()).throw(RuntimeError("sync failed"))
+
+    assert window._start_edit() is False
+    assert window._editing is False
+    assert "sync failed" in window._input_error
+
+
+def test_start_edit_handles_activation_exceptions(test_sprite):
+    """Widget activation errors should abort editing with backend-unavailable message."""
+    window, inspector = _create_window()
+    window._is_headless = False
+    window._editor_input = inspector_module.gui.UIInputText(width=120, height=24, text="")
+    inspector.set_selection([test_sprite])
+
+    def _raise_activate():
+        raise RuntimeError("activation failed")
+
+    window._editor_input.activate = _raise_activate
+
+    assert window._start_edit() is False
+    assert "Widget editing unavailable" in window._input_error
+
+
+def test_cancel_edit_without_editor_input_is_noop():
+    """Cancel edit should no-op when widget was never initialized."""
+    window, _ = _create_window()
+    window._editor_input = None
+    window._editing = True
+
+    window._cancel_edit()
+
+    assert window._editing is True
+
+
+def test_commit_edit_returns_false_when_editor_widget_missing():
+    """Commit should return False when no editor widget exists."""
+    window, _ = _create_window()
+    window._editor_input = None
+
+    assert window._commit_edit() is False
+
+
+def test_commit_edit_arrange_handles_missing_editor_and_empty_settings():
+    """Arrange commit should gracefully handle missing editor or settings."""
+    window, _ = _create_window()
+    window._is_headless = False
+    window._mode = "arrange"
+    window._editor_input = inspector_module.gui.UIInputText(width=120, height=24, text="9")
+    window._arrange_editor = None
+    window._editing = True
+    assert window._commit_edit() is False
+    assert window._editing is False
+
+    editor = _ArrangeEditorStub()
+    window._arrange_editor = editor
+    window._safe_arrange_settings = lambda: []
+    window._editing = True
+    assert window._commit_edit() is False
+    assert window._editing is False
+
+
+def test_commit_edit_properties_handles_missing_current_and_apply_errors():
+    """Properties commit should handle missing active property and parse/apply exceptions."""
+    window, inspector = _create_window()
+    window._is_headless = False
+    window._mode = "properties"
+    window._editor_input = inspector_module.gui.UIInputText(width=120, height=24, text="x")
+    window._editing = True
+    inspector.current_property = lambda: None
+    assert window._commit_edit() is False
+    assert window._editing is False
+
+    class _Prop:
+        name = "is_collidable"
+        editor_type = "bool"
+
+    inspector.current_property = lambda: _Prop()
+    inspector.apply_property_text = lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("bad value"))
+    window._editing = True
+    assert window._commit_edit() is False
+    assert "bad value" in window._input_error
+
+
+def test_deactivate_editor_widget_swallows_widget_errors():
+    """Deactivation should swallow backend-specific deactivate/focus/visible errors."""
+    window, _ = _create_window()
+    window._is_headless = False
+    window._editor_input = inspector_module.gui.UIInputText(width=120, height=24, text="")
+    window._editor_input.deactivate = lambda: (_ for _ in ()).throw(RuntimeError("deactivate"))
+
+    class _FocusRaise:
+        def __setattr__(self, name, value):
+            if name in ("focused", "visible"):
+                raise RuntimeError("setattr fail")
+            super().__setattr__(name, value)
+
+    bad_widget = _FocusRaise()
+    bad_widget.deactivate = window._editor_input.deactivate
+    window._editor_input = bad_widget
+
+    window._deactivate_editor_widget()
+
+
+def test_on_text_early_returns_for_headless_and_non_editing_paths(mocker):
+    """on_text should early-return in headless and non-editing routed states."""
+    window, _ = _create_window(main_window=mocker.MagicMock())
+    window._is_headless = True
+    window.on_text("1")
+
+    window._is_headless = False
+    window._mode = "properties"
+    window._editing = False
+    window.on_text("2")
+
+
+def test_handle_widget_draw_failure_resets_error_and_state():
+    """Repeated draw failures should switch to backend failure message."""
+    window, _ = _create_window()
+    window._is_headless = False
+    window._editing = True
+    window._widget_draw_failures = 10
+    window._editor_input = inspector_module.gui.UIInputText(width=120, height=24, text="")
+
+    window._handle_widget_draw_failure()
+
+    assert window._editing is False
+    assert window._widget_draw_failures == 0
+    assert "Widget draw failed" in window._input_error

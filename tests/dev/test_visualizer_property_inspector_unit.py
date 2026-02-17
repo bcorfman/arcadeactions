@@ -459,3 +459,148 @@ def test_click_normal_sprite_updates_visible_inspector_without_recreate(mocker):
     inspector_window.set_selection.assert_called_once_with([sprite])
     inspector_window.show_window.assert_not_called()
     inspector_window.hide_window.assert_not_called()
+
+
+def test_open_property_inspector_returns_false_when_window_creation_fails(mocker):
+    """open property inspector should return False when window cannot be created."""
+    window = _make_window_stub(mocker)
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList(), window=window)
+    dev_viz.property_inspector_window = None
+    mocker.patch.object(dev_viz, "_property_inspector_window_needs_recreate", return_value=True)
+    mocker.patch.object(dev_viz, "_create_property_inspector_window", return_value=None)
+
+    assert dev_viz.open_property_inspector_for_current_selection() is False
+
+
+def test_open_property_inspector_returns_true_when_already_visible(mocker):
+    """open property inspector should be a no-op success when window is already visible."""
+    window = _make_window_stub(mocker)
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList(), window=window)
+    inspector_window = mocker.MagicMock()
+    inspector_window.visible = True
+    inspector_window.is_closed = False
+    dev_viz.property_inspector_window = inspector_window
+
+    assert dev_viz.open_property_inspector_for_current_selection() is True
+    inspector_window.show_window.assert_not_called()
+
+
+def test_property_inspector_window_needs_recreate_cases(mocker):
+    """needs_recreate should handle none/open/closed inspector states."""
+    window = _make_window_stub(mocker)
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList(), window=window)
+
+    dev_viz.property_inspector_window = None
+    assert dev_viz._property_inspector_window_needs_recreate() is True
+
+    live = mocker.MagicMock()
+    live.is_closed = False
+    dev_viz.property_inspector_window = live
+    assert dev_viz._property_inspector_window_needs_recreate() is False
+
+    closed = mocker.MagicMock()
+    closed.is_closed = True
+    dev_viz.property_inspector_window = closed
+    assert dev_viz._property_inspector_window_needs_recreate() is True
+    assert dev_viz.property_inspector_window is None
+
+
+def test_arrange_marker_helpers_cover_invalid_inputs(mocker, tmp_path):
+    """Arrange marker helper methods should gracefully reject malformed markers."""
+    window = _make_window_stub(mocker)
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList(), window=window)
+
+    assert dev_viz._arrange_marker_key({"file": "scene.py"}) is None
+    assert dev_viz._arrange_marker_key({"file": "scene.py", "lineno": "bad"}) is None
+    assert dev_viz._first_arrange_marker(object()) is None
+    assert dev_viz.sprite_has_arrange_marker(object()) is False
+
+    path = tmp_path / "scene.py"
+    path.write_text("x = 1\nnot_arrange()\n", encoding="utf-8")
+    assert dev_viz._marker_points_to_arrange_call({"file": str(path), "lineno": 2}) is False
+    assert dev_viz._marker_points_to_arrange_call({"file": str(path), "lineno": 0}) is False
+    assert dev_viz._marker_points_to_arrange_call({"file": str(path), "lineno": "bad"}) is False
+
+
+def test_open_overrides_editor_returns_false_for_invalid_marker_key(mocker):
+    """Arrange editor open should fail when marker key extraction fails."""
+    window = _make_window_stub(mocker)
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList(), window=window)
+    sprite = arcade.SpriteSolidColor(width=8, height=8, color=arcade.color.RED)
+    sprite._source_markers = [{"file": "scene.py", "lineno": "bad", "type": "arrange"}]
+
+    assert dev_viz.open_overrides_editor_for_sprite(sprite) is False
+
+
+def test_open_overrides_editor_returns_false_when_window_creation_still_missing(mocker):
+    """Arrange editor open should fail if inspector window cannot be created."""
+    window = _make_window_stub(mocker)
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList(), window=window)
+    sprite = arcade.SpriteSolidColor(width=8, height=8, color=arcade.color.RED)
+    sprite._source_markers = [{"file": "scene.py", "lineno": 42, "type": "arrange"}]
+    dev_viz.property_inspector_window = None
+    mocker.patch.object(dev_viz, "_property_inspector_window_needs_recreate", return_value=True)
+    mocker.patch.object(dev_viz, "_create_property_inspector_window", return_value=None)
+
+    assert dev_viz.open_overrides_editor_for_sprite(sprite) is False
+
+
+def test_apply_arrange_layout_to_group_and_live_handle_non_positive_dims(mocker):
+    """Arrange layout helpers should no-op for non-positive rows/cols."""
+    sprite = arcade.SpriteSolidColor(width=8, height=8, color=arcade.color.RED)
+    old_pos = (sprite.center_x, sprite.center_y)
+    DevVisualizer._apply_arrange_layout_to_group(
+        [sprite],
+        {"rows": 0, "cols": 1, "start_x": 1.0, "start_y": 2.0, "spacing_x": 3.0, "spacing_y": 4.0},
+    )
+    assert (sprite.center_x, sprite.center_y) == old_pos
+
+    window = _make_window_stub(mocker)
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList([sprite]), window=window)
+    updated = dev_viz._apply_arrange_layout_to_group_live(
+        [sprite],
+        {"rows": 0, "cols": 0, "start_x": 1.0, "start_y": 2.0, "spacing_x": 3.0, "spacing_y": 4.0},
+        marker_template={"file": "scene.py", "lineno": 1, "type": "arrange"},
+    )
+    assert updated == [sprite]
+
+
+def test_detach_restores_wrapped_view_handlers_and_cleans_up_attrs(mocker):
+    """detach_from_window should restore wrapped view callbacks and delete stash attrs."""
+    window = _make_window_stub(mocker)
+    current_view = mocker.MagicMock()
+    current_view.on_draw = mocker.MagicMock()
+    current_view.on_key_press = mocker.MagicMock()
+    current_view.on_mouse_press = mocker.MagicMock()
+    current_view.on_mouse_drag = mocker.MagicMock()
+    current_view.on_mouse_release = mocker.MagicMock()
+    orig_draw = mocker.MagicMock()
+    orig_key = mocker.MagicMock()
+    orig_press = mocker.MagicMock()
+    orig_drag = mocker.MagicMock()
+    orig_release = mocker.MagicMock()
+    current_view._dev_viz_original_on_draw = orig_draw
+    current_view._dev_viz_original_on_key_press = orig_key
+    current_view._dev_viz_original_on_mouse_press = orig_press
+    current_view._dev_viz_original_on_mouse_drag = orig_drag
+    current_view._dev_viz_original_on_mouse_release = orig_release
+    window.current_view = current_view
+
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList(), window=window)
+    dev_viz._attached = True
+    dev_viz._original_on_draw = window.on_draw
+    dev_viz._original_on_key_press = window.on_key_press
+    dev_viz._original_on_mouse_press = window.on_mouse_press
+    dev_viz._original_on_mouse_drag = window.on_mouse_drag
+    dev_viz._original_on_mouse_release = window.on_mouse_release
+    dev_viz._original_on_close = window.on_close
+    dev_viz._original_show_view = window.show_view
+
+    dev_viz.detach_from_window()
+
+    assert current_view.on_draw is orig_draw
+    assert current_view.on_key_press is orig_key
+    assert current_view.on_mouse_press is orig_press
+    assert current_view.on_mouse_drag is orig_drag
+    assert current_view.on_mouse_release is orig_release
+    assert not hasattr(current_view, "_dev_viz_original_on_draw")

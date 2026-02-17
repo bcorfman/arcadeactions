@@ -374,3 +374,97 @@ def test_command_placeholder_helpers_return_false(mocker):
     context = CommandExecutionContext(window=window, scene_sprites=arcade.SpriteList(), selection=[])
     assert DevVisualizer._command_disabled(context) is False
     assert DevVisualizer._command_not_implemented(context) is False
+
+
+def test_cache_command_palette_desired_location_uses_tracked_position(mocker):
+    """Caching should use tracker location and update anchor from main window."""
+    window = _make_window_stub(mocker)
+    window.get_location.return_value = (120, 220)
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList(), window=window)
+    dev_viz.command_palette_window = mocker.MagicMock()
+    dev_viz._position_tracker.get_tracked_position = mocker.MagicMock(return_value=(10, 20))
+
+    dev_viz._cache_command_palette_desired_location()
+
+    assert dev_viz._command_palette_desired_location == (10, 20)
+    assert dev_viz._command_palette_position_anchor == (120, 220)
+
+
+def test_set_command_palette_location_handles_errors_and_tracks_success(mocker):
+    """Setting command palette location should tolerate backend failures and track success."""
+    window = _make_window_stub(mocker)
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList(), window=window)
+
+    # No palette -> no-op
+    dev_viz.command_palette_window = None
+    dev_viz._set_command_palette_location((1, 2))
+
+    # set_location failure -> early return
+    bad_palette = mocker.MagicMock()
+    bad_palette.set_location.side_effect = RuntimeError("boom")
+    dev_viz.command_palette_window = bad_palette
+    dev_viz._set_command_palette_location((3, 4))
+
+    # success path -> tracker called
+    good_palette = mocker.MagicMock()
+    dev_viz.command_palette_window = good_palette
+    track = mocker.patch.object(dev_viz._position_tracker, "track_known_position")
+    dev_viz._set_command_palette_location((5, 6))
+
+    good_palette.set_location.assert_called_once_with(5, 6)
+    track.assert_called_once_with(good_palette, 5, 6)
+
+
+def test_restore_command_palette_location_after_show_reasserts_when_visible(mocker):
+    """Restore-after-show should set desired location now and schedule reassert."""
+    window = _make_window_stub(mocker)
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList(), window=window)
+    palette = mocker.MagicMock()
+    palette.visible = True
+    dev_viz.command_palette_window = palette
+    dev_viz._command_palette_desired_location = (-300, 120)
+    set_loc = mocker.patch.object(dev_viz, "_set_command_palette_location")
+    callbacks: list[object] = []
+    mocker.patch("arcadeactions.dev.visualizer.arcade.schedule_once", side_effect=lambda cb, _dt: callbacks.append(cb))
+
+    dev_viz._restore_command_palette_location_after_show()
+
+    set_loc.assert_called_once_with((-300, 120))
+    assert len(callbacks) == 1
+    callbacks[0](0.0)
+    assert set_loc.call_count == 2
+
+
+def test_get_palette_frame_extra_height_handles_none_and_measure_errors(mocker):
+    """Palette frame-height helper should return 0 when unavailable or measure fails."""
+    window = _make_window_stub(mocker)
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList(), window=window)
+
+    dev_viz.palette_window = None
+    assert dev_viz._get_palette_frame_extra_height() == 0
+
+    dev_viz.palette_window = mocker.MagicMock()
+    mocker.patch(
+        "arcadeactions.dev.visualizer.window_decorations.measure_window_decoration_deltas",
+        side_effect=RuntimeError("measure failed"),
+    )
+    dev_viz._palette_decoration_dy = None
+    assert dev_viz._get_palette_frame_extra_height() == 0
+
+
+def test_resolve_sprite_palette_location_for_stack_prefers_tracked_then_direct_then_cached(mocker):
+    """Stack resolver should prefer tracked, then direct, then cached palette locations."""
+    window = _make_window_stub(mocker)
+    dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList(), window=window)
+    dev_viz.palette_window = mocker.MagicMock()
+
+    dev_viz._position_tracker.get_tracked_position = mocker.MagicMock(return_value=(1, 2))
+    assert dev_viz._resolve_sprite_palette_location_for_stack() == (1, 2)
+
+    dev_viz._position_tracker.get_tracked_position = mocker.MagicMock(return_value=None)
+    mocker.patch.object(dev_viz, "_get_window_location", return_value=(3, 4))
+    assert dev_viz._resolve_sprite_palette_location_for_stack() == (3, 4)
+
+    mocker.patch.object(dev_viz, "_get_window_location", return_value=None)
+    dev_viz._palette_desired_location = (5, 6)
+    assert dev_viz._resolve_sprite_palette_location_for_stack() == (5, 6)

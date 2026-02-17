@@ -47,6 +47,7 @@
   - Toggle with Alt+I, independent from F12 edit-mode overlay visibility
   - Edits selected sprite properties in real time (single and multi-select)
   - Use `Enter` to start editing the highlighted property, type in the input widget, and press `Enter` again to commit
+  - Entering edit mode pre-fills the widget with the current value and places the caret at the end
   - Supports expression input for numeric fields (for example `SCREEN_CENTER + 100`)
   - Use `Escape` to cancel an active edit; `Ctrl+Z` / `Ctrl+Shift+Z` still undo/redo changes
   - In Arrange Grid Settings mode, edit `rows`, `cols`, `start_x`, `start_y`, `spacing_x`, and `spacing_y` for the selected arrange-grid call

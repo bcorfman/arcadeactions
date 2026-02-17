@@ -142,3 +142,41 @@ def test_undo_uses_last_non_empty_selection(test_sprite):
 
     assert inspector.undo() is True
     assert inspector.redo() is True
+
+
+def test_current_property_value_text_and_copy_current_property_for_string_values():
+    """String values should be represented with Python repr quoting."""
+    sprite = arcade.SpriteSolidColor(width=8, height=8, color=arcade.color.RED)
+    sprite.position_id = "enemy_1"
+    inspector = _make_inspector()
+    inspector.set_selection([sprite])
+
+    names = [p.name for p in inspector.visible_properties()]
+    assert "position_id" in names
+    while inspector.current_property() and inspector.current_property().name != "position_id":
+        inspector.move_active_property(1)
+
+    assert inspector.current_property_value_text() == "'enemy_1'"
+    assert inspector.copy_current_property() == "sprite.position_id = 'enemy_1'"
+
+
+def test_property_value_returns_none_without_selection():
+    """property_value should return None when nothing is selected."""
+    inspector = _make_inspector()
+    assert inspector.property_value("center_x") is None
+
+
+def test_expression_names_fallback_without_window():
+    """Expression constants should resolve to zeroes when window context is absent."""
+    inspector = SpritePropertyInspector(
+        property_registry=SpritePropertyRegistry(),
+        history=PropertyHistory(max_changes_per_sprite=20),
+        window=None,
+    )
+
+    names_x = inspector._expression_names("center_x")
+    names_y = inspector._expression_names("center_y")
+
+    assert names_x["SCREEN_WIDTH"] == 0.0
+    assert names_x["SCREEN_CENTER"] == 0.0
+    assert names_y["SCREEN_HEIGHT"] == 0.0
