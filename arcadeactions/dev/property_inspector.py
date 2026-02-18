@@ -164,6 +164,7 @@ class PropertyInspectorWindow(arcade.Window):
     EDITOR_FONT_NAME = ("Arial",)
     EDITOR_FONT_SIZE = 12
     EDITOR_TEXT_COLOR = arcade.color.WHITE
+    EDITOR_TEXT_COLOR_RGBA = (255, 255, 255, 255)
     EDITOR_BG_COLOR = (32, 34, 44, 255)
 
     def __init__(
@@ -380,18 +381,16 @@ class PropertyInspectorWindow(arcade.Window):
     def _apply_editor_text_style(self, text: str) -> None:
         if self._editor_input is None:
             return
-        # Include one trailing position so newly inserted characters at the
-        # caret boundary inherit the same readable style.
-        style_end = max(1, len(text) + 1)
-        self._editor_input.doc.set_style(
-            0,
-            style_end,
-            {
-                "font_name": self.EDITOR_FONT_NAME,
-                "font_size": self.EDITOR_FONT_SIZE,
-                "color": self.EDITOR_TEXT_COLOR,
-            },
-        )
+        style_payload = {
+            "font_name": self.EDITOR_FONT_NAME,
+            "font_size": self.EDITOR_FONT_SIZE,
+            "color": self.EDITOR_TEXT_COLOR_RGBA,
+        }
+        # Restyle existing document content.
+        self._editor_input.doc.set_style(0, len(text), style_payload)
+        # Prime caret insertion attributes so newly typed text keeps the same style.
+        self._editor_input.caret.set_style(style_payload)
+        self._editor_input.trigger_full_render()
 
     def _start_edit(self) -> bool:
         if self._editor_input is None and not self._is_headless:
@@ -409,6 +408,11 @@ class PropertyInspectorWindow(arcade.Window):
         self._editor_input.visible = True
         try:
             self._sync_editor_text_from_selection()
+        except AttributeError as exc:
+            self._editing = False
+            self._editor_input.visible = False
+            self._input_error = f"Widget editing unavailable: {exc}"
+            return False
         except Exception as exc:
             self._editing = False
             self._editor_input.visible = False
@@ -425,10 +429,11 @@ class PropertyInspectorWindow(arcade.Window):
                 pass
             self._editor_input.activate()
             self._editor_input.focused = True
+            self._apply_editor_text_style(self._editor_input.text)
             caret = self._editor_input.caret
             text_len = len(self._editor_input.text)
             caret.position = text_len
-            caret.mark = text_len
+            caret.mark = None
             self._pending_caret_enforce_frames = 2
             return True
         except Exception as exc:
@@ -786,5 +791,5 @@ class PropertyInspectorWindow(arcade.Window):
             return
         text_len = len(self._editor_input.text)
         self._editor_input.caret.position = text_len
-        self._editor_input.caret.mark = text_len
+        self._editor_input.caret.mark = None
         self._pending_caret_enforce_frames -= 1

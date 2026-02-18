@@ -136,6 +136,9 @@ def _patch_window_and_text(mocker):
         def deactivate(self):
             self.active = False
 
+        def trigger_full_render(self):
+            return None
+
     mocker.patch("arcadeactions.dev.property_inspector.gui.UIManager", side_effect=_UIManagerStub)
     mocker.patch("arcadeactions.dev.property_inspector.gui.UIAnchorLayout", side_effect=_UIAnchorLayoutStub)
     mocker.patch("arcadeactions.dev.property_inspector.gui.UIInputText", side_effect=_UIInputTextStub)
@@ -675,8 +678,8 @@ def test_arrange_mode_prefill_reapplies_widget_document_text_style():
     window._editor_input.doc.set_style.assert_called()
 
 
-def test_prefill_styles_includes_insertion_boundary_for_typed_characters():
-    """Prefill styling should include a trailing insertion boundary for readable typing."""
+def test_prefill_styles_current_document_text_range():
+    """Prefill styling should cover the full current document text range."""
     window, _ = _create_window()
     window._is_headless = False
     window._editor_input = inspector_module.gui.UIInputText(width=120, height=24, text="")
@@ -688,11 +691,11 @@ def test_prefill_styles_includes_insertion_boundary_for_typed_characters():
     set_style_call = window._editor_input.doc.set_style.call_args
     assert set_style_call is not None
     assert set_style_call.args[0] == 0
-    assert set_style_call.args[1] == len(window._editor_input.text) + 1
+    assert set_style_call.args[1] == len(window._editor_input.text)
 
 
-def test_set_editor_text_styles_empty_string_for_future_typed_text():
-    """Empty prefill should still style insertion boundary so new text is readable."""
+def test_set_editor_text_styles_empty_string_and_primes_caret_style():
+    """Empty prefill should still prime caret style for readable newly typed text."""
     window, _ = _create_window()
     window._is_headless = False
     window._editor_input = inspector_module.gui.UIInputText(width=120, height=24, text="")
@@ -702,7 +705,23 @@ def test_set_editor_text_styles_empty_string_for_future_typed_text():
     set_style_call = window._editor_input.doc.set_style.call_args
     assert set_style_call is not None
     assert set_style_call.args[0] == 0
-    assert set_style_call.args[1] == 1
+    assert set_style_call.args[1] == 0
+    window._editor_input.caret.set_style.assert_called()
+
+
+def test_set_editor_text_uses_explicit_rgba_color_in_document_style():
+    """Document style should use explicit RGBA tuple for backend-consistent text color."""
+    window, _ = _create_window()
+    window._is_headless = False
+    window._editor_input = inspector_module.gui.UIInputText(width=120, height=24, text="")
+
+    window._set_editor_text("160")
+
+    set_style_call = window._editor_input.doc.set_style.call_args
+    assert set_style_call is not None
+    style_payload = set_style_call.args[2]
+    assert style_payload["color"] == (255, 255, 255, 255)
+    window._editor_input.caret.set_style.assert_called_with(style_payload)
 
 
 def test_set_editor_text_strips_control_characters():
@@ -728,7 +747,7 @@ def test_editor_on_change_sanitizes_and_restyles_text():
     assert window._editor_input.text == "12"
     set_style_call = window._editor_input.doc.set_style.call_args
     assert set_style_call is not None
-    assert set_style_call.args[1] == 3
+    assert set_style_call.args[1] == 2
 
 
 def test_on_text_reapplies_editor_text_style_for_typed_characters(mocker):
@@ -745,7 +764,34 @@ def test_on_text_reapplies_editor_text_style_for_typed_characters(mocker):
     set_style_call = window._editor_input.doc.set_style.call_args
     assert set_style_call is not None
     assert set_style_call.args[0] == 0
-    assert set_style_call.args[1] == 2
+    assert set_style_call.args[1] == 1
+
+
+def test_start_edit_reapplies_text_style_after_widget_activation():
+    """Start edit should restyle text after activation resets backend text style."""
+    window, _ = _create_window()
+    window._is_headless = False
+    window._mode = "arrange"
+    window._editor_input = inspector_module.gui.UIInputText(width=120, height=24, text="")
+    editor = _ArrangeEditorStub()
+    window.show_arrange_mode(editor)
+
+    original_activate = window._editor_input.activate
+
+    def activate_with_style_reset():
+        original_activate()
+        window._editor_input.doc.set_style.reset_mock()
+
+    window._editor_input.activate = activate_with_style_reset
+
+    started = window._start_edit()
+
+    assert started is True
+    set_style_call = window._editor_input.doc.set_style.call_args
+    assert set_style_call is not None
+    assert set_style_call.args[0] == 0
+    assert set_style_call.args[1] == len(window._editor_input.text)
+    window._editor_input.caret.set_style.assert_called()
 
 
 def test_on_text_ignores_control_character_events_during_edit():
@@ -784,7 +830,7 @@ def test_start_edit_defers_caret_position_enforcement_until_draw():
     window.on_draw()
 
     assert window._editor_input.caret.position == 1
-    assert window._editor_input.caret.mark == 1
+    assert window._editor_input.caret.mark is None
     assert window._pending_caret_enforce_frames == 1
 
 
@@ -799,7 +845,21 @@ def test_arrange_mode_start_edit_places_caret_at_end_without_select_all():
     window.on_key_press(arcade.key.ENTER, 0)
 
     assert window._editor_input.caret.position == len(window._editor_input.text)
-    assert window._editor_input.caret.mark == len(window._editor_input.text)
+    assert window._editor_input.caret.mark is None
+
+
+def test_start_edit_clears_selection_anchor_to_avoid_double_backspace():
+    """Caret mark should be cleared so first Backspace deletes character immediately."""
+    window, _ = _create_window()
+    window._is_headless = False
+    window._editor_input = inspector_module.gui.UIInputText(width=120, height=24, text="")
+    editor = _ArrangeEditorStub()
+    window.show_arrange_mode(editor)
+
+    window.on_key_press(arcade.key.ENTER, 0)
+
+    assert window._editor_input.caret.position == len(window._editor_input.text)
+    assert window._editor_input.caret.mark is None
 
 
 def test_arrange_mode_up_down_changes_selected_setting():
