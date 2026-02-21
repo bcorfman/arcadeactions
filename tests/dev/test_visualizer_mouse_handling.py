@@ -244,6 +244,32 @@ class TestHandleMousePress(ActionTestBase):
 
         assert result is True
         assert len(dev_viz._dragging_sprites) == 2
+
+    def test_click_selection_sets_inspector_focus_flag_for_mouse_release(self, window, test_sprite, mocker):
+        """Sprite selection click should open inspector without deferred legacy focus flag."""
+        dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList([test_sprite]))
+        mocker.patch("arcadeactions.dev.visualizer.arcade.get_sprites_at_point", return_value=[test_sprite])
+        dev_viz.selection_manager.handle_mouse_press = mocker.MagicMock(return_value=True)
+        open_properties = mocker.patch.object(dev_viz, "open_property_inspector_for_current_selection", return_value=True)
+
+        result = dev_viz.handle_mouse_press(100, 100, arcade.MOUSE_BUTTON_LEFT, 0)
+
+        assert result is True
+        open_properties.assert_called_once_with()
+        assert hasattr(dev_viz, "_focus_inspector_on_mouse_release") is False
+
+    def test_click_arrange_sprite_sets_inspector_focus_flag_for_mouse_release(self, window, test_sprite, mocker):
+        """Arrange sprite click should open arrange editor without deferred legacy focus flag."""
+        dev_viz = DevVisualizer(scene_sprites=arcade.SpriteList([test_sprite]))
+        test_sprite._source_markers = [{"file": "test.py", "lineno": 10, "type": "arrange"}]
+        mocker.patch("arcadeactions.dev.visualizer.arcade.get_sprites_at_point", return_value=[test_sprite])
+        open_arrange = mocker.patch.object(dev_viz, "open_overrides_editor_for_sprite", return_value=True)
+
+        result = dev_viz.handle_mouse_press(100, 100, arcade.MOUSE_BUTTON_LEFT, 0)
+
+        assert result is True
+        open_arrange.assert_called_once_with(test_sprite)
+        assert hasattr(dev_viz, "_focus_inspector_on_mouse_release") is False
         # Both sprites should be in drag list with their offsets
 
     def test_unselected_sprite_triggers_selection(self, window, test_sprite, mocker):
@@ -471,3 +497,13 @@ class TestHandleMouseRelease(ActionTestBase):
         result = dev_viz.handle_mouse_release(100, 100, arcade.MOUSE_BUTTON_LEFT, 0)
 
         assert result is False
+
+    def test_release_focuses_inspector_when_focus_flag_is_set(self, window, mocker):
+        """Mouse release should ignore removed deferred-focus compatibility flag."""
+        dev_viz = DevVisualizer()
+        dev_viz._focus_inspector_on_mouse_release = True
+
+        result = dev_viz.handle_mouse_release(100, 100, arcade.MOUSE_BUTTON_LEFT, 0)
+
+        assert result is False
+        assert dev_viz._focus_inspector_on_mouse_release is True

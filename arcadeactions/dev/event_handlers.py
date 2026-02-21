@@ -18,11 +18,7 @@ class EventHandlerHost(Protocol):
 
     visible: bool
     window: arcade.Window | None
-    palette_window: Any | None
-    command_palette_window: Any | None
-    property_inspector_window: Any | None
     scene_sprites: arcade.SpriteList
-    _is_detaching: bool
     _position_tracker: Any
 
     _original_on_draw: Callable[..., Any] | None
@@ -30,10 +26,11 @@ class EventHandlerHost(Protocol):
     _original_on_mouse_press: Callable[..., Any] | None
     _original_on_mouse_drag: Callable[..., Any] | None
     _original_on_mouse_release: Callable[..., Any] | None
+    _original_on_text: Callable[..., Any] | None
+    _original_on_text_motion: Callable[..., Any] | None
     _original_on_close: Callable[..., Any] | None
     _original_show_view: Callable[..., Any] | None
     _original_set_location: Callable[..., Any] | None
-
     def toggle(self) -> None: ...
 
     def toggle_palette(self) -> None: ...
@@ -55,15 +52,44 @@ class EventHandlerHost(Protocol):
     def _wrap_view_on_draw(self, view: arcade.View) -> None: ...
 
     overrides_panel: overrides_input.OverridesPanelInput | None
+    devshell_coordinator: Any | None
+
+
+def _route_devshell_key_input(host: EventHandlerHost, key: int, modifiers: int) -> bool:
+    coordinator = host.devshell_coordinator
+    if coordinator is None:
+        return False
+    try:
+        return bool(coordinator.route_key_press(key, modifiers))
+    except Exception:
+        return False
+
+
+def _route_devshell_text_input(host: EventHandlerHost, text: str) -> bool:
+    coordinator = host.devshell_coordinator
+    if coordinator is None:
+        return False
+    try:
+        return bool(coordinator.route_text(text))
+    except Exception:
+        return False
+
+
+def _route_devshell_text_motion_input(host: EventHandlerHost, motion: int) -> bool:
+    coordinator = host.devshell_coordinator
+    if coordinator is None:
+        return False
+    try:
+        return bool(coordinator.route_text_motion(motion))
+    except Exception:
+        return False
 
 
 def _prepare_main_window_render_state(window: arcade.Window) -> None:
     """Normalize shared GL state that can be corrupted by other windows.
 
-    Arcade palette windows can share an OpenGL context with the main window.
-    If a secondary window changes viewport/scissor, the main window can render
-    into a clipped region (often the bottom-left). Reset to full-window before
-    running any user draw code.
+    This keeps draw state deterministic even if external tooling creates
+    additional OpenGL windows that share context with the main Arcade window.
     """
     window.ctx.screen.use()
     # Secondary windows can enable scissoring; ensure the main window isn't clipped.
@@ -179,26 +205,8 @@ def wrap_window_handlers(
             host.toggle_property_inspector()
             return
 
-        if key == arcade.key.ESCAPE:
-            if host.visible:
-                if host.palette_window:
-                    try:
-                        if not host.palette_window.closed:
-                            host.palette_window.close()
-                    except Exception:
-                        pass
-                    host.palette_window = None
-                else:
-                    if window is not None:
-                        try:
-                            if not window.closed:
-                                window.close()
-                        except Exception:
-                            pass
-                return
-            if host._original_on_key_press:
-                host._original_on_key_press(key, modifiers)
-                return
+        if host.visible and _route_devshell_key_input(host, key, modifiers):
+            return
 
         if host.visible and host.handle_key_press(key, modifiers):
             return
@@ -233,39 +241,6 @@ def wrap_window_handlers(
     def wrapped_on_close():
         if host.visible:
             host.hide()
-        if host.palette_window:
-            host._is_detaching = True
-            try:
-                if not host.palette_window.closed:
-                    host.palette_window.close()
-            except Exception:
-                try:
-                    host.palette_window.set_visible(False)
-                except Exception:
-                    pass
-            finally:
-                host._is_detaching = False
-            host.palette_window = None
-        if host.command_palette_window:
-            try:
-                if not host.command_palette_window.closed:
-                    host.command_palette_window.close()
-            except Exception:
-                try:
-                    host.command_palette_window.set_visible(False)
-                except Exception:
-                    pass
-            host.command_palette_window = None
-        if host.property_inspector_window:
-            try:
-                if not host.property_inspector_window.closed:
-                    host.property_inspector_window.close()
-            except Exception:
-                try:
-                    host.property_inspector_window.set_visible(False)
-                except Exception:
-                    pass
-            host.property_inspector_window = None
         if host._original_on_close:
             host._original_on_close()
 
@@ -307,6 +282,8 @@ def wrap_view_handlers(host: EventHandlerHost, view: arcade.View) -> None:
         view._dev_viz_original_on_mouse_press = getattr(view, "on_mouse_press", None)
         view._dev_viz_original_on_mouse_drag = getattr(view, "on_mouse_drag", None)
         view._dev_viz_original_on_mouse_release = getattr(view, "on_mouse_release", None)
+        view._dev_viz_original_on_text = getattr(view, "on_text", None)
+        view._dev_viz_original_on_text_motion = getattr(view, "on_text_motion", None)
 
     original_on_draw = view._dev_viz_original_on_draw
 
@@ -338,26 +315,8 @@ def wrap_view_handlers(host: EventHandlerHost, view: arcade.View) -> None:
             host.toggle_property_inspector()
             return
 
-        if key == arcade.key.ESCAPE:
-            if host.visible:
-                if host.palette_window:
-                    try:
-                        if not host.palette_window.closed:
-                            host.palette_window.close()
-                    except Exception:
-                        pass
-                    host.palette_window = None
-                else:
-                    if host.window is not None:
-                        try:
-                            if not host.window.closed:
-                                host.window.close()
-                        except Exception:
-                            pass
-                return
-            if original_on_key_press:
-                original_on_key_press(key, modifiers)
-                return
+        if host.visible and _route_devshell_key_input(host, key, modifiers):
+            return
 
         if host.visible and host.handle_key_press(key, modifiers):
             return
@@ -371,15 +330,26 @@ def wrap_view_handlers(host: EventHandlerHost, view: arcade.View) -> None:
     original_on_mouse_drag = view._dev_viz_original_on_mouse_drag
     original_on_mouse_release = view._dev_viz_original_on_mouse_release
 
-    original_on_text = getattr(view, "on_text", None)
+    original_on_text = view._dev_viz_original_on_text
+    original_on_text_motion = view._dev_viz_original_on_text_motion
 
     def wrapped_view_on_text(text: str):
+        if host.visible and _route_devshell_text_input(host, text):
+            return
         if overrides_input.handle_overrides_panel_text(host.overrides_panel, text):
             return
         if original_on_text:
             original_on_text(text)
 
     view.on_text = wrapped_view_on_text  # type: ignore[assignment]
+
+    def wrapped_view_on_text_motion(motion: int):
+        if host.visible and _route_devshell_text_motion_input(host, motion):
+            return
+        if original_on_text_motion:
+            original_on_text_motion(motion)
+
+    view.on_text_motion = wrapped_view_on_text_motion  # type: ignore[assignment]
 
     def wrapped_view_on_mouse_press(x: int, y: int, button: int, modifiers: int):
         if host.visible and host.handle_mouse_press(x, y, button, modifiers):

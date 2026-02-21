@@ -642,3 +642,50 @@ class TestDrawErrorHandling(ActionTestBase):
         mock_draw_rect.assert_called()
         mock_text_class.assert_called()
         mock_text_instance.draw.assert_called()
+
+
+@_skip_if_no_display
+class TestDrawDevShellFocusOverlay(ActionTestBase):
+    """Test suite for DevShell focus visibility overlays in one-window mode."""
+
+    def test_draw_devshell_focus_label_and_active_badge(self, window, test_sprite_list, mocker, monkeypatch):
+        """Edit-Live DevShell draw should show focus label and active panel badge."""
+        monkeypatch.setenv("ARCADEACTIONS_DEVVIZ", "1")
+        dev_viz = DevVisualizer(scene_sprites=test_sprite_list, window=window)
+        dev_viz.visible = True
+        window._context = mocker.MagicMock()
+        window.width = 1280
+        window.height = 720
+        mocker.patch.object(dev_viz.selection_manager, "draw")
+        mocker.patch.object(dev_viz._indicator_text, "draw")
+        mocker.patch("arcadeactions.dev.visualizer_draw.arcade.draw_lbwh_rectangle_filled", create=True)
+        draw_text = mocker.patch("arcadeactions.dev.visualizer_draw._draw_text_obj")
+
+        assert dev_viz._devshell_command_palette_panel is not None
+        dev_viz._devshell_command_palette_panel.set_visible(True)
+        dev_viz._sync_devshell_panel_order()
+        assert dev_viz.devshell_coordinator is not None
+        dev_viz.devshell_coordinator.set_active_panel("command_palette")
+
+        dev_viz.draw()
+
+        rendered_labels = [call.args[0] for call in draw_text.call_args_list if call.args]
+        assert "Focus: command_palette" in rendered_labels
+        assert any("[ACTIVE]" in label for label in rendered_labels)
+
+    def test_draw_devshell_focus_overlay_hidden_in_preview_clean(self, window, test_sprite_list, mocker, monkeypatch):
+        """Preview-Clean should not draw DevShell focus overlays."""
+        monkeypatch.setenv("ARCADEACTIONS_DEVVIZ", "1")
+        dev_viz = DevVisualizer(scene_sprites=test_sprite_list, window=window)
+        dev_viz.visible = True
+        window._context = mocker.MagicMock()
+        mocker.patch.object(dev_viz.selection_manager, "draw")
+        mocker.patch.object(dev_viz._indicator_text, "draw")
+        draw_text = mocker.patch("arcadeactions.dev.visualizer_draw._draw_text_obj")
+
+        assert dev_viz.devshell_coordinator is not None
+        dev_viz.devshell_coordinator.set_preview_clean(True)
+        dev_viz.draw()
+
+        rendered_labels = [call.args[0] for call in draw_text.call_args_list if call.args]
+        assert "Focus: game-stage" not in rendered_labels

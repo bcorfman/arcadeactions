@@ -153,36 +153,6 @@ def pytest_collection_modifyitems(config, items):
                 item.add_marker(skip_slow)
 
 
-@pytest.fixture(autouse=True)
-def _suppress_secondary_palette_window_in_ci(monkeypatch, request):
-    """Prevent Sprite Palette OS windows only for integration visualizer tests in CI."""
-    if os.environ.get("CI") != "true":
-        yield
-        return
-    nodeid = str(getattr(request.node, "nodeid", ""))
-    if not nodeid.startswith("tests/integration/test_visualizer_"):
-        yield
-        return
-    try:
-        from arcadeactions.dev.palette_window import PaletteWindow
-    except Exception:
-        yield
-        return
-
-    def _mock_set_visible(self, visible: bool) -> None:
-        self._is_visible = bool(visible)
-        ui_manager = getattr(self, "_ui_manager", None)
-        if ui_manager is None:
-            return
-        if visible:
-            ui_manager.enable()
-        else:
-            ui_manager.disable()
-
-    monkeypatch.setattr(PaletteWindow, "set_visible", _mock_set_visible)
-    yield
-
-
 class HeadlessWindow:
     """Minimal window substitute used on platforms without OpenGL support."""
 

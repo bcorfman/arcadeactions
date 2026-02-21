@@ -450,8 +450,8 @@ ARCADEACTIONS_DEVVIZ=1 uv run python examples/create_boss_level.py
 # In editor:
 # 1. DevVisualizer auto-enables (no enable_dev_visualizer() call needed!)
 # 2. Press F12 to toggle DevVisualizer main overlay (if not visible)
-# 3. Press F11 to open palette window
-# 4. Click prototypes in palette to spawn sprites
+# 3. Press F11 to open the prototype palette panel
+# 4. Click prototypes in the panel to spawn sprites
 # 5. Click sprites in main window to select them
 # 6. Press E to export scene to YAML
 # 7. Load YAML in your game code
@@ -645,21 +645,20 @@ class GameView(arcade.View):
 
 ### Sprite Prototype Registration
 
-### Palette Window
+### Prototype Palette Panel
 
-The palette window is a separate window that displays registered sprite prototypes. Press **F11** to toggle it.
+The prototype palette is an in-window DevShell panel that displays registered sprite prototypes. Press **F11** to toggle it.
 
 **Features:**
-- Separate window (doesn't overlap main window)
-- Click-to-spawn: Click a prototype to spawn it at center of main window (640, 360)
-- Resizable and movable
-- Auto-shows when DevVisualizer is enabled via environment variable
-- Similar pattern to ACE timeline window (F4)
+- In-window panel in the DevShell left rail
+- Click-to-spawn: Click a prototype to spawn it at stage center (640, 360)
+- Uses the same deterministic input router as other DevShell panels
+- Auto-shows when DevVisualizer is enabled
 
 **Spawning Sprites:**
-1. Press F11 to open palette window
-2. Click a prototype name in the palette
-3. Sprite spawns at center of main window
+1. Press F11 to open the prototype palette panel
+2. Click a prototype name in the panel
+3. Sprite spawns at stage center
 4. Move sprite by selecting and repositioning (future: drag to desired position)
 
 Register sprite "prefabs" that can be spawned from the palette:
@@ -1016,14 +1015,14 @@ When enabled via environment variable, DevVisualizer automatically:
 - Creates a scene SpriteList
 - Attaches to the current window
 - Registers F12, F11, F8, and Alt+I keyboard handlers
-- Shows main overlay and palette window automatically
+- Shows main overlay and prototype palette panel automatically
 
 ### Keyboard Shortcuts
 
 - **F12**: Toggle DevVisualizer main overlay (selection, gizmos, indicator)
-- **F11**: Toggle palette window (separate window with sprite prototypes)
-- **F8**: Toggle dev command palette window (secondary command UI)
-- **Alt+I**: Toggle sprite property inspector window (live property editing)
+- **F11**: Toggle prototype palette panel
+- **F8**: Toggle command palette panel
+- **Alt+I**: Toggle sprite property inspector panel
 - **Enter** (in property inspector): Start editing highlighted property, and commit current text input
 - **Escape** (in property inspector): Cancel active property edit (or close window if not editing)
 - **Ctrl+Z / Ctrl+Shift+Z** (in property inspector): Undo/redo property edits
@@ -1050,26 +1049,13 @@ When enabled via environment variable, DevVisualizer automatically:
 - **auto_attach** (`bool`): Automatically attach to window (default: `True`)
 
 **DevVisualizer Methods**:
-- **show()**: Show DevVisualizer main overlay and palette window, pause all actions (enter edit mode)
-- **hide()**: Hide DevVisualizer main overlay and palette window, resume all actions (exit edit mode)
+- **show()**: Show DevVisualizer main overlay and DevShell panels, pause all actions (enter edit mode)
+- **hide()**: Hide DevVisualizer main overlay and DevShell panels, resume all actions (exit edit mode)
 - **toggle()**: Toggle main overlay visibility and pause/resume state
-- **toggle_palette()**: Toggle palette window visibility (F11)
+- **toggle_palette()**: Toggle prototype palette panel visibility (F11)
 - **import_sprites(*sprite_lists, clear=True)**: Import sprites from game for editing
 - **export_sprites()**: Sync edited sprite properties back to originals
 - **apply_metadata_actions(sprite)**: Convert action metadata to runtime actions
-
-**PaletteWindow** (Separate window for sprite palette):
-- **registry** (`SpritePrototypeRegistry`): Registry with registered prototypes
-- **ctx** (`DevContext`): DevContext with scene_sprites reference
-- **title** (`str`): Window title (default: `"Sprite Palette"`)
-- **width** (`int`): Window width (default: `250`)
-- **height** (`int`): Window height (default: `400`)
-- **on_close_callback** (`Callable`): Optional callback when window closes
-- **Methods**: `show_window()`, `hide_window()`, `toggle_window()`
-
-**PaletteSidebar** (Deprecated - use PaletteWindow instead):
-- Kept for backward compatibility
-- Use PaletteWindow for new code
 
 **SelectionManager**:
 - **scene_sprites** (`arcade.SpriteList`): SpriteList containing sprites that can be selected
@@ -1148,8 +1134,8 @@ for call in arrange_calls:
 
 1. **Zero boilerplate for new scenes**: Just register prototypes and use `get_dev_visualizer()` - no `enable_dev_visualizer()` needed
 2. **Register prototypes early**: Set up all prototypes before creating the visualizer
-3. **Use palette window**: Press F11 to open the separate palette window (cleaner than overlay)
-4. **Click to spawn**: Click prototypes in palette window to spawn sprites at center (640, 360)
+3. **Use prototype palette panel**: Press F11 to open the panel
+4. **Click to spawn**: Click prototypes in the panel to spawn sprites at center (640, 360)
 5. **Use meaningful preset names**: Clear names make the preset library easier to navigate
 6. **Organize presets by category**: Use categories like "Movement", "Effects", "Formations"
 7. **Store action configs as metadata**: Never call `action.apply()` during editing
