@@ -23,22 +23,23 @@ if TYPE_CHECKING:
 from arcadeactions import Action
 from arcadeactions.dev import (
     event_handlers,
-    palette_helpers,
     visualizer_draw,
     visualizer_export,
     visualizer_keys,
     visualizer_metadata,
-    window_decorations,
     window_utils,
 )
 from arcadeactions.dev import window_hooks as _window_hooks
 from arcadeactions.dev.boundary_overlay import BoundaryGizmo
-from arcadeactions.dev.command_palette import CommandPaletteWindow
 from arcadeactions.dev.command_registry import CommandExecutionContext, CommandRegistry
 from arcadeactions.dev.arrange_editor import ArrangeGridEditor
-from arcadeactions.dev.palette_window import PaletteWindow
+from arcadeactions.dev.devshell_command_palette_panel import DevShellCommandPalettePanel
+from arcadeactions.dev.devshell_coordinator import DevShellCoordinator
+from arcadeactions.dev.devshell_layout import DevShellLayout, DevShellRegions
+from arcadeactions.dev.devshell_property_inspector_panel import DevShellPropertyInspectorPanel
+from arcadeactions.dev.devshell_prototype_palette_panel import DevShellPrototypePalettePanel
 from arcadeactions.dev.property_history import PropertyHistory
-from arcadeactions.dev.property_inspector import PropertyInspectorWindow, SpritePropertyInspector
+from arcadeactions.dev.property_inspector import SpritePropertyInspector
 from arcadeactions.dev.property_registry import SpritePropertyRegistry
 from arcadeactions.dev.prototype_registry import DevContext, get_registry
 from arcadeactions.dev.selection import SelectionManager
@@ -52,6 +53,7 @@ from arcadeactions.dev.visualizer_protocols import (
 from arcadeactions.dev.window_position_tracker import WindowPositionTracker
 
 _MISSING_GIZMO_REFRESH_SECONDS = 0.25
+_get_primary_monitor_rect = window_utils.get_primary_monitor_rect
 
 __all__ = [
     "DevVisualizer",
@@ -76,7 +78,17 @@ def _install_update_all_attach_hook() -> None:
     _window_hooks.install_update_all_attach_hook(get_dev_visualizer)
 
 
-_get_primary_monitor_rect = window_utils.get_primary_monitor_rect
+class _NoopGameInputTarget:
+    """Fallback game input target used while DevShell integration is partial."""
+
+    def on_key_press(self, _key: int, _modifiers: int) -> bool:
+        return False
+
+    def on_text(self, _text: str) -> bool:
+        return False
+
+    def on_text_motion(self, _motion: int) -> bool:
+        return False
 
 
 class DevVisualizer:
@@ -99,19 +111,8 @@ class DevVisualizer:
             scene_sprites: SpriteList for editable scene (created if None)
             window: Arcade window (auto-detected if None)
         """
-        # Flag to ensure we only schedule one palette-show poll
-        self._palette_show_pending: bool = False
-        # Decoration deltas measured once (border width, title+border height)
-        self._window_decoration_dx: int | None = None
-        self._window_decoration_dy: int | None = None
-        # Palette window decoration deltas (measured when palette is positioned)
-        self._palette_decoration_dx: int | None = None
-        self._palette_decoration_dy: int | None = None
-        # Extra padding to account for window shadows not captured by decoration measurement
-        # This is in addition to the measured borders (main left + palette right)
-        self._EXTRA_FRAME_PAD: int = 8
-        # Vertical spacing between stacked secondary windows (F11 over F8).
-        self._COMMAND_PALETTE_STACK_GAP: int = 4
+        # Window must be assigned before any optional panel initialization that may depend on it.
+        self.window = window
 
         if scene_sprites is None:
             scene_sprites = arcade.SpriteList()
@@ -120,28 +121,17 @@ class DevVisualizer:
         self.ctx = DevContext(scene_sprites=scene_sprites)
 
         # Initialize components
-        # Palette is now in a separate window
-        self.palette_window: PaletteWindow | None = None
-        self.command_palette_window: CommandPaletteWindow | None = None
-        self.property_inspector_window: PropertyInspectorWindow | None = None
         self.command_registry = CommandRegistry()
+        self.devshell_coordinator: DevShellCoordinator | None = None
+        self.devshell_layout: DevShellLayout | None = None
+        self._devshell_prototype_palette_panel: DevShellPrototypePalettePanel | None = None
+        self._devshell_command_palette_panel: DevShellCommandPalettePanel | None = None
+        self._devshell_property_inspector_panel: DevShellPropertyInspectorPanel | None = None
+        self._devshell_panels_enabled = True
+        self._devshell_focus_last_pulse_token = 0
+        self._devshell_focus_pulse_until = 0.0
         self.property_registry = SpritePropertyRegistry()
         self.property_history = PropertyHistory(max_changes_per_sprite=20)
-        # The palette is a UI affordance for dev mode; default to hidden until edit mode is shown (F12)
-        # or the user explicitly toggles it (F11).
-        self._palette_desired_visible: bool = False
-        # Track main-window location used when the palette was last positioned.
-        self._palette_position_anchor: tuple[int, int] | None = None
-        # Cached "good" palette window location. Some window managers adjust a hidden
-        # window's position on map/unmap; we re-assert this stable location on show.
-        self._palette_desired_location: tuple[int, int] | None = None
-        # Some window managers adjust a window's position after mapping/unmapping. We
-        # re-assert the desired location after show to converge without oscillation.
-        self._palette_last_visible_location: tuple[int, int] | None = None
-        # Command palette follows the same stable-location strategy as sprite palette.
-        self._command_palette_position_anchor: tuple[int, int] | None = None
-        self._command_palette_desired_location: tuple[int, int] | None = None
-
         self.selection_manager = SelectionManager(scene_sprites)
 
         # Legacy override panel backend remains for compatibility with tests/utilities.
@@ -149,16 +139,18 @@ class DevVisualizer:
 
         self.overrides_panel = OverridesPanel(self)
         self._register_default_commands()
+        self._init_devshell_panels_if_enabled()
 
         # State
         self.visible = False
-        self.window = window
         self._dragging_gizmo_handle: tuple[BoundaryGizmo, object] | None = None
         self._dragging_sprites: list[tuple[arcade.Sprite, float, float]] | None = None  # (sprite, offset_x, offset_y)
         self._gizmos: WeakKeyDictionary[arcade.Sprite, BoundaryGizmo | None] = WeakKeyDictionary()
         self._gizmo_miss_refresh_at: WeakKeyDictionary[arcade.Sprite, float] = WeakKeyDictionary()
         self._frozen_sprite_motion: WeakKeyDictionary[arcade.Sprite, tuple[float, float, float]] = WeakKeyDictionary()
         self._position_tracker = WindowPositionTracker()
+        self._window_decoration_dx: int | None = None
+        self._window_decoration_dy: int | None = None
 
         # Create indicator text (shown when DevVisualizer is active)
         self._indicator_text = arcade.Text(
@@ -172,16 +164,148 @@ class DevVisualizer:
 
         # Track if we've attached to window
         self._attached = False
-        self._is_detaching: bool = False  # Flag to prevent on_palette_close from closing main window during detachment
         self._original_on_draw: Callable[..., None] | None = None
         self._original_on_key_press: Callable[..., None] | None = None
         self._original_on_mouse_press: Callable[..., None] | None = None
         self._original_on_mouse_drag: Callable[..., None] | None = None
         self._original_on_mouse_release: Callable[..., None] | None = None
+        self._original_on_text: Callable[..., None] | None = None
+        self._original_on_text_motion: Callable[..., None] | None = None
         self._original_on_close: Callable[..., None] | None = None
         self._original_view_on_draw: Callable[..., None] | None = None
         self._original_show_view: Callable[..., None] | None = None
         self._original_set_location: Callable[..., None] | None = None
+
+    @property
+    def devshell_panels_enabled(self) -> bool:
+        """Expose feature-flag state to event-handler routing helpers."""
+        return self._devshell_panels_enabled
+
+    def _init_devshell_panels_if_enabled(self) -> None:
+        """Initialize one-window DevShell panel models behind feature flag."""
+        if not self._devshell_panels_enabled:
+            self.devshell_coordinator = None
+            self.devshell_layout = None
+            self._devshell_prototype_palette_panel = None
+            self._devshell_command_palette_panel = None
+            self._devshell_property_inspector_panel = None
+            return
+
+        self.devshell_layout = DevShellLayout(
+            stage_width=1280,
+            stage_height=720,
+            left_rail_width=280,
+            right_rail_width=340,
+            top_rail_height=48,
+            bottom_rail_height=36,
+        )
+
+        panel_inspector = SpritePropertyInspector(
+            property_registry=self.property_registry,
+            history=self.property_history,
+            window=self.window,
+        )
+        self._devshell_property_inspector_panel = DevShellPropertyInspectorPanel(
+            inspector=panel_inspector,
+            on_edit_start=lambda: self._set_devshell_text_edit_owner("property_inspector", True),
+            on_edit_end=lambda: self._set_devshell_text_edit_owner("property_inspector", False),
+        )
+        self._devshell_prototype_palette_panel = DevShellPrototypePalettePanel(
+            registry=get_registry(),
+            dev_context=self.ctx,
+        )
+        self._devshell_command_palette_panel = DevShellCommandPalettePanel(
+            registry=self.command_registry,
+            context_provider=self._build_command_context,
+        )
+        self.devshell_coordinator = DevShellCoordinator(
+            game_target=_NoopGameInputTarget(),
+            panel_targets={
+                "prototype_palette": self._devshell_prototype_palette_panel,
+                "command_palette": self._devshell_command_palette_panel,
+                "property_inspector": self._devshell_property_inspector_panel,
+            },
+            panel_order=[],
+            transient_panels={"command_palette"},
+            close_panel=self._close_devshell_panel,
+        )
+        self._sync_devshell_panel_order()
+        self._ensure_devshell_window_contract()
+
+    def _set_devshell_text_edit_owner(self, panel_id: str, editing: bool) -> None:
+        coordinator = self.devshell_coordinator
+        if coordinator is None:
+            return
+        if editing:
+            coordinator.focus_manager.begin_text_edit(panel_id)
+            return
+        coordinator.focus_manager.end_text_edit()
+
+    def _ensure_devshell_window_contract(self) -> None:
+        if not self._devshell_panels_enabled:
+            return
+        if self.window is None:
+            return
+        if self.devshell_layout is None:
+            return
+        min_width, min_height = self.devshell_layout.min_window_size()
+        try:
+            self.window.set_minimum_size(int(min_width), int(min_height))
+        except Exception:
+            return
+
+    def devshell_regions(self) -> DevShellRegions | None:
+        """Return current stage/rail regions for one-window DevShell mode."""
+        if not self._devshell_panels_enabled:
+            return None
+        if self.devshell_layout is None:
+            return None
+        if self.window is None:
+            return None
+        coordinator = self.devshell_coordinator
+        preview_clean = False
+        if coordinator is not None:
+            preview_clean = coordinator.state.is_preview_clean()
+        return self.devshell_layout.compute_regions(
+            window_width=int(self.window.width),
+            window_height=int(self.window.height),
+            preview_clean=preview_clean,
+        )
+
+    def toggle_preview_clean_mode(self) -> bool:
+        """Toggle between Edit-Live and Preview-Clean when DevShell is enabled."""
+        if not self._devshell_panels_enabled:
+            return False
+        coordinator = self.devshell_coordinator
+        if coordinator is None:
+            return False
+        if coordinator.state.is_preview_clean():
+            coordinator.set_preview_clean(False)
+            return True
+        coordinator.set_preview_clean(True)
+        return True
+
+    def _close_devshell_panel(self, panel_id: str) -> None:
+        if panel_id == "prototype_palette" and self._devshell_prototype_palette_panel is not None:
+            self._devshell_prototype_palette_panel.set_visible(False)
+        if panel_id == "command_palette" and self._devshell_command_palette_panel is not None:
+            self._devshell_command_palette_panel.set_visible(False)
+        if panel_id == "property_inspector" and self._devshell_property_inspector_panel is not None:
+            self._devshell_property_inspector_panel.set_visible(False)
+        self._sync_devshell_panel_order()
+
+    def _sync_devshell_panel_order(self) -> None:
+        coordinator = self.devshell_coordinator
+        if coordinator is None:
+            return
+        panel_order: list[str] = []
+        if self._devshell_prototype_palette_panel is not None and self._devshell_prototype_palette_panel.visible:
+            panel_order.append("prototype_palette")
+        if self._devshell_command_palette_panel is not None and self._devshell_command_palette_panel.visible:
+            panel_order.append("command_palette")
+        if self._devshell_property_inspector_panel is not None and self._devshell_property_inspector_panel.visible:
+            panel_order.append("property_inspector")
+        coordinator.set_panel_order(panel_order)
 
     def track_window_position(self, window: arcade.Window) -> bool:
         """Track the current position of a window.
@@ -201,6 +325,33 @@ class DevVisualizer:
         """Get the tracked position for a window."""
         return self._position_tracker.get_tracked_position(window)
 
+    @staticmethod
+    def _is_valid_window_location(location: tuple[int, int] | None) -> bool:
+        """Return True when location looks like a mapped on-screen coordinate."""
+        if location is None:
+            return False
+        x, y = location
+        if (x, y) == (0, 0):
+            # Wayland commonly reports (0, 0) before mapping.
+            return False
+        min_coord = -32768
+        if x < min_coord or y < min_coord:
+            return False
+        return True
+
+    def _get_window_location(self, window: arcade.Window | None) -> tuple[int, int] | None:
+        """Get best-known window location using OS, then tracked fallback."""
+        if window is None:
+            return None
+        raw_location: tuple[int, int] | None = None
+        try:
+            raw_location = window.get_location()
+        except Exception:
+            raw_location = None
+        if self._is_valid_window_location(raw_location):
+            return raw_location
+        return self._get_tracked_window_position(window)
+
     def reset_scene(self, scene_sprites: arcade.SpriteList) -> None:
         """Reset DevVisualizer state to use a new SpriteList.
 
@@ -218,58 +369,24 @@ class DevVisualizer:
         self._gizmos = WeakKeyDictionary()
         self._gizmo_miss_refresh_at = WeakKeyDictionary()
         self._frozen_sprite_motion = WeakKeyDictionary()
-        if self.palette_window is not None:
-            self.palette_window.dev_context = self.ctx
-        if self.command_palette_window is not None:
-            self.command_palette_window.set_context(self._build_command_context())
-        if self.property_inspector_window is not None:
-            self.property_inspector_window.set_selection(self.selection_manager.get_selected())
 
     def update_main_window_position(self) -> bool:
-        """Update the tracked position of the main window.
-
-        Call this after repositioning the main window to ensure palette positioning
-        uses the correct relative location. For example:
-
-        >>> dev_viz = get_dev_visualizer()
-        >>> center_window(window)  # or move_to_primary_monitor(window)
-        >>> dev_viz.update_main_window_position()
-        """
-        # Get the current window (in case it was recreated)
+        """Track the main window position for non-DevShell callers."""
         window = self.window
         if window is None:
-            try:
-                window = arcade.get_window()
-            except RuntimeError:
-                pass
-
-        if window:
-            tracked = self.track_window_position(window)
-            # Measure decoration deltas once
-            if tracked and self._window_decoration_dx is None:
-                try:
-                    calc_dx, calc_dy = window_decorations.measure_window_decoration_deltas(window)
-                    if calc_dx is not None or calc_dy is not None:
-                        self._window_decoration_dx = calc_dx
-                        self._window_decoration_dy = calc_dy
-                except Exception:
-                    import traceback
-
-                    traceback.print_exc()
-            # Update self.window in case it changed
-            if self.window != window:
-                self.window = window
-            # Reposition palette immediately whenever we capture a non-(0,0) position
-            if (
-                tracked
-                and self.palette_window is not None
-                and self.palette_window.visible
-                and not self._palette_show_pending
-                and self._palette_needs_reposition()
-            ):
-                self._position_palette_window(force=True)
-            return tracked
-        return False
+            return False
+        actual_location = self._get_window_location(window)
+        requested_location: tuple[int, int] | None
+        try:
+            requested_location = window._arcadeactions_last_set_location
+        except AttributeError:
+            requested_location = None
+        if actual_location is not None and requested_location is not None:
+            requested_x, requested_y = requested_location
+            actual_x, actual_y = actual_location
+            self._window_decoration_dx = int(actual_x - requested_x)
+            self._window_decoration_dy = int(actual_y - requested_y)
+        return self.track_window_position(window)
 
     def attach_to_window(self, window: arcade.Window | None = None) -> bool:
         """
@@ -294,6 +411,7 @@ class DevVisualizer:
             return False
 
         self.window = window
+        self._ensure_devshell_window_contract()
 
         # Try to track the main window position for relative positioning
         self.track_window_position(window)
@@ -319,6 +437,8 @@ class DevVisualizer:
         self.window.on_mouse_press = self._original_on_mouse_press
         self.window.on_mouse_drag = self._original_on_mouse_drag
         self.window.on_mouse_release = self._original_on_mouse_release
+        self.window.on_text = self._original_on_text
+        self.window.on_text_motion = self._original_on_text_motion
         self.window.on_close = self._original_on_close
         if self._original_set_location is not None:
             self.window.set_location = self._original_set_location  # type: ignore[assignment]
@@ -341,6 +461,10 @@ class DevVisualizer:
                 current_view.on_mouse_drag = current_view._dev_viz_original_on_mouse_drag  # type: ignore[assignment]
             if hasattr(current_view, "_dev_viz_original_on_mouse_release"):
                 current_view.on_mouse_release = current_view._dev_viz_original_on_mouse_release  # type: ignore[assignment]
+            if hasattr(current_view, "_dev_viz_original_on_text"):
+                current_view.on_text = current_view._dev_viz_original_on_text  # type: ignore[assignment]
+            if hasattr(current_view, "_dev_viz_original_on_text_motion"):
+                current_view.on_text_motion = current_view._dev_viz_original_on_text_motion  # type: ignore[assignment]
             # Clean up stored originals
             for attr in [
                 "_dev_viz_original_on_draw",
@@ -348,6 +472,8 @@ class DevVisualizer:
                 "_dev_viz_original_on_mouse_press",
                 "_dev_viz_original_on_mouse_drag",
                 "_dev_viz_original_on_mouse_release",
+                "_dev_viz_original_on_text",
+                "_dev_viz_original_on_text_motion",
             ]:
                 if hasattr(current_view, attr):
                     delattr(current_view, attr)
@@ -365,28 +491,6 @@ class DevVisualizer:
 
         self.visible = False
 
-        # Close palette window if it exists
-        # Set flag to prevent on_palette_close callback from closing main window
-        if self.palette_window:
-            self._is_detaching = True
-            try:
-                self.palette_window.close()
-            finally:
-                self._is_detaching = False
-            self.palette_window = None
-        if self.command_palette_window:
-            try:
-                self.command_palette_window.close()
-            except Exception:
-                pass
-            self.command_palette_window = None
-        if self.property_inspector_window:
-            try:
-                self.property_inspector_window.close()
-            except Exception:
-                pass
-            self.property_inspector_window = None
-
         self._original_on_close = None
         self._original_set_location = None
 
@@ -397,39 +501,28 @@ class DevVisualizer:
         else:
             self.show()
 
-    def _poll_show_palette(self, _dt: float = 0.0) -> None:
-        """Wait until main window has a real location, then position & show palette."""
-        palette_helpers.poll_show_palette(
-            self,
-            get_primary_monitor_rect=_get_primary_monitor_rect,
-            palette_window_cls=PaletteWindow,
-            registry_provider=get_registry,
-        )
-        self._log_palette_positions("poll-show")
-
     def show(self) -> None:
         """Show DevVisualizer and pause all actions (enter edit mode)."""
         self.visible = True
+        self._ensure_devshell_window_contract()
         self._freeze_scene_sprite_motion()
-        # Entering edit mode always shows the palette by default (docs/README contract).
-        self._palette_desired_visible = True
-        self._apply_palette_visibility()
+        if self._devshell_prototype_palette_panel is not None:
+            self._devshell_prototype_palette_panel.set_visible(True)
+        self._sync_devshell_panel_order()
         Action.pause_all()
 
     def hide(self) -> None:
         """Hide DevVisualizer and resume all actions (exit edit mode)."""
         self.visible = False
-        # Leaving edit mode hides the palette by default, but it can be re-opened
-        # independently via F11 while DevVisualizer is hidden.
-        self._palette_desired_visible = False
-        # Cancel any pending palette show operation
-        self._palette_show_pending = False
-        # Hide palette window
-        if self.palette_window:
-            self._cache_palette_desired_location()
-            self.palette_window.hide_window()
-        if self.command_palette_window:
-            self.command_palette_window.hide_window()
+        if self._devshell_prototype_palette_panel is not None:
+            self._devshell_prototype_palette_panel.set_visible(False)
+        if self._devshell_command_palette_panel is not None:
+            self._devshell_command_palette_panel.set_visible(False)
+        if self._devshell_property_inspector_panel is not None:
+            self._devshell_property_inspector_panel.set_visible(False)
+        self._sync_devshell_panel_order()
+        if self.devshell_coordinator is not None:
+            self.devshell_coordinator.set_active_panel(None)
         # Reset all drag states to prevent stale drag when hidden during drag operation
         # This ensures that if F12 is pressed during a drag, all drag states are cleaned up
         # since the mouse release event will be skipped when visible=False
@@ -463,54 +556,18 @@ class DevVisualizer:
             sprite.change_angle = motion[2]
         self._frozen_sprite_motion = WeakKeyDictionary()
 
-    def _create_palette_window(self) -> None:
-        """Create the palette window."""
-        palette_helpers.create_palette_window(
-            self,
-            palette_window_cls=PaletteWindow,
-            registry_provider=get_registry,
-        )
-
-    def _get_window_location(self, window: Any) -> tuple[int, int] | None:
-        """Safely get window location, using tracked positions when available.
-
-        Args:
-            window: Window object (real Arcade window or HeadlessWindow)
-
-        Returns:
-            Tuple of (x, y) coordinates, or None if location cannot be determined.
-        """
-        return palette_helpers.get_window_location(self, window)
-
-    def _position_palette_window(self, *, force: bool = False) -> bool:
-        """Position palette window relative to main window using the same offset calculation as move_to_primary_monitor.
-
-        Returns:
-            True if positioning succeeded, False otherwise.
-        """
-        positioned = palette_helpers.position_palette_window(
-            self,
-            get_primary_monitor_rect=_get_primary_monitor_rect,
-            force=force,
-        )
-        if positioned:
-            self._palette_position_anchor = self._get_window_location(self.window)
-            # Use the tracked position we *set* as the stable desired location.
-            #
-            # On some platforms, `get_location()` does not round-trip with `set_location()`
-            # due to decoration/frame coordinate differences (it can drift by a constant
-            # offset on each hide/show cycle if we feed `get_location()` back into
-            # `set_location()`).
-            if self.palette_window is not None:
-                tracked = self._position_tracker.get_tracked_position(self.palette_window)
-                if tracked is not None:
-                    self._palette_desired_location = tracked
-        return positioned
-
     def toggle_palette(self) -> None:
-        """Toggle palette window visibility."""
-        self._palette_desired_visible = not self._palette_desired_visible
-        self._apply_palette_visibility()
+        """Toggle prototype palette panel visibility."""
+        if self._devshell_prototype_palette_panel is None:
+            return
+        panel = self._devshell_prototype_palette_panel
+        panel.toggle_visible()
+        self._sync_devshell_panel_order()
+        if self.devshell_coordinator is not None:
+            if panel.visible:
+                self.devshell_coordinator.set_active_panel("prototype_palette")
+            else:
+                self.devshell_coordinator.set_active_panel(None)
 
     def _build_command_context(self) -> CommandExecutionContext:
         """Build execution context for command handlers."""
@@ -521,248 +578,51 @@ class DevVisualizer:
             selection=selection,
         )
 
-    def _create_command_palette_window(self) -> None:
-        """Create command palette window."""
-        if self.command_palette_window is not None:
-            return
-        self.command_palette_window = CommandPaletteWindow(
-            registry=self.command_registry,
-            context=self._build_command_context(),
-            main_window=self.window,
-        )
-        self._position_command_palette_window(force=True)
-
-    def _create_property_inspector_window(self) -> None:
-        """Create property inspector secondary window."""
-        if self.property_inspector_window is not None:
-            return
-        inspector = SpritePropertyInspector(
-            property_registry=self.property_registry,
-            history=self.property_history,
-            window=self.window,
-        )
-        self.property_inspector_window = PropertyInspectorWindow(
-            inspector=inspector,
-            main_window=self.window,
-            on_close_callback=self._on_property_inspector_close,
-        )
-        self._position_property_inspector_window()
-
-    def _on_property_inspector_close(self) -> None:
-        self.property_inspector_window = None
-
-    def _property_inspector_window_needs_recreate(self) -> bool:
-        if self.property_inspector_window is None:
-            return True
-        if self.property_inspector_window.is_closed:
-            self.property_inspector_window = None
-            return True
-        return False
-
-    def _position_property_inspector_window(self) -> None:
-        if self.property_inspector_window is None or self.window is None:
-            return
-        if not self._main_window_has_valid_location():
-            return
-        try:
-            main_x, main_y = self.window.get_location()
-            main_width = int(self.window.width)
-        except Exception:
-            return
-        # Keep property inspector on the opposite side of the palette/command windows.
-        # This avoids overlap when F11 palette is open on the left.
-        inspector_x = int(main_x + main_width + self._EXTRA_FRAME_PAD)
-        inspector_y = int(main_y)
-        try:
-            self.property_inspector_window.set_location(inspector_x, inspector_y)
-        except Exception:
-            return
-
     def _sync_property_inspector_selection(self) -> None:
-        if self.property_inspector_window is None:
-            return
-        self.property_inspector_window.set_selection(self.selection_manager.get_selected())
+        if self._devshell_property_inspector_panel is not None:
+            self._devshell_property_inspector_panel.set_selection(self.selection_manager.get_selected())
 
     def toggle_property_inspector(self) -> None:
-        """Toggle property inspector window (Alt+I)."""
-        if self._property_inspector_window_needs_recreate():
-            self._create_property_inspector_window()
-        if self.property_inspector_window is None:
+        """Toggle property inspector panel (Alt+I)."""
+        if self._devshell_property_inspector_panel is None:
             return
-
-        self.property_inspector_window.show_properties_mode()
-
-        self._sync_property_inspector_selection()
-        if self.property_inspector_window.visible:
-            self.property_inspector_window.hide_window()
-            self._activate_main_window()
+        panel = self._devshell_property_inspector_panel
+        panel.show_properties_mode()
+        panel.set_visible(not panel.visible)
+        self._sync_devshell_panel_order()
+        if panel.visible:
+            panel.set_selection(self.selection_manager.get_selected())
+            if self.devshell_coordinator is not None:
+                self.devshell_coordinator.set_active_panel("property_inspector")
             return
-
-        self._position_property_inspector_window()
-        self.property_inspector_window.show_window()
-        self._activate_main_window()
+        if self.devshell_coordinator is not None:
+            self.devshell_coordinator.set_active_panel(None)
 
     def open_property_inspector_for_current_selection(self) -> bool:
         """Show inspector in properties mode and sync current selection without toggling."""
-        if self._property_inspector_window_needs_recreate():
-            self._create_property_inspector_window()
-        if self.property_inspector_window is None:
+        if self._devshell_property_inspector_panel is None:
             return False
-
-        self.property_inspector_window.show_properties_mode()
-        self._sync_property_inspector_selection()
-        if self.property_inspector_window.visible:
-            return True
-
-        self._position_property_inspector_window()
-        self.property_inspector_window.show_window()
+        panel = self._devshell_property_inspector_panel
+        panel.show_properties_mode()
+        panel.set_selection(self.selection_manager.get_selected())
+        panel.set_visible(True)
+        self._sync_devshell_panel_order()
+        if self.devshell_coordinator is not None:
+            self.devshell_coordinator.set_active_panel("property_inspector")
         return True
 
-    def _command_palette_needs_reposition(self) -> bool:
-        if self.window is None:
-            return True
-        main_location = self._get_window_location(self.window)
-        if main_location is None:
-            return True
-        if self._command_palette_position_anchor != main_location:
-            return True
-        return False
-
-    def _cache_command_palette_desired_location(self) -> None:
-        if self.command_palette_window is None:
-            return
-        tracked = self._position_tracker.get_tracked_position(self.command_palette_window)
-        if tracked is not None:
-            self._command_palette_desired_location = tracked
-        self._command_palette_position_anchor = self._get_window_location(self.window)
-
-    def _set_command_palette_location(self, loc: tuple[int, int]) -> None:
-        if self.command_palette_window is None:
-            return
-        try:
-            self.command_palette_window.set_location(int(loc[0]), int(loc[1]))
-        except Exception:
-            return
-        try:
-            self.command_palette_window._arcadeactions_last_set_location = (int(loc[0]), int(loc[1]))  # type: ignore[attr-defined]
-        except Exception:
-            return
-        self._position_tracker.track_known_position(self.command_palette_window, int(loc[0]), int(loc[1]))
-
-    def _restore_command_palette_location_after_show(self) -> None:
-        if self.command_palette_window is None or self._command_palette_desired_location is None:
-            return
-        desired = self._command_palette_desired_location
-        self._set_command_palette_location(desired)
-
-        def _reassert(_dt: float) -> None:
-            if self.command_palette_window is None:
-                return
-            if not self.command_palette_window.visible:
-                return
-            self._set_command_palette_location(desired)
-
-        arcade.schedule_once(_reassert, 0.0)
-
-    def _get_palette_frame_extra_height(self) -> int:
-        """Best-effort frame/titlebar height for the F11 palette window."""
-        if self.palette_window is None:
-            return 0
-        if self._palette_decoration_dy is None:
-            try:
-                calc_dx, calc_dy = window_decorations.measure_window_decoration_deltas(self.palette_window)
-            except Exception:
-                calc_dx, calc_dy = None, None
-            if calc_dx is not None or calc_dy is not None:
-                self._palette_decoration_dx = calc_dx
-                self._palette_decoration_dy = calc_dy
-        if self._palette_decoration_dy is None:
-            return 0
-        return max(0, abs(int(self._palette_decoration_dy)))
-
-    def _position_command_palette_window(self, *, force: bool = False) -> None:
-        """Position command palette to the left of the main window and below sprite palette."""
-        if self.command_palette_window is None or self.window is None:
-            return
-        if not self._main_window_has_valid_location():
-            return
-
-        try:
-            main_x, main_y = self.window.get_location()
-        except Exception:
-            return
-
-        try:
-            command_width = int(self.command_palette_window.width)
-        except Exception:
-            command_width = 400
-        try:
-            command_height = int(self.command_palette_window.height)
-        except Exception:
-            command_height = 240
-
-        if (
-            self._command_palette_desired_location is not None
-            and not force
-            and not self._command_palette_needs_reposition()
-        ):
-            self._set_command_palette_location(self._command_palette_desired_location)
-            return
-
-        palette_x = int(main_x - command_width - self._EXTRA_FRAME_PAD)
-        palette_y = int(main_y)
-
-        if self.palette_window is not None:
-            sprite_palette_location = self._resolve_sprite_palette_location_for_stack()
-            if sprite_palette_location is not None:
-                sprite_palette_y = sprite_palette_location[1]
-                try:
-                    sprite_palette_height = int(self.palette_window.height)
-                except Exception:
-                    sprite_palette_height = 400
-                sprite_palette_frame_extra = self._get_palette_frame_extra_height()
-                palette_y = int(
-                    sprite_palette_y
-                    + sprite_palette_height
-                    + sprite_palette_frame_extra
-                    + self._COMMAND_PALETTE_STACK_GAP
-                )
-
-        self._set_command_palette_location((palette_x, palette_y))
-        self._command_palette_desired_location = (palette_x, palette_y)
-        self._command_palette_position_anchor = self._get_window_location(self.window)
-
-    def _resolve_sprite_palette_location_for_stack(self) -> tuple[int, int] | None:
-        """Resolve sprite palette location for F8 stacking, using stable cached fallback."""
-        if self.palette_window is None:
-            return None
-        tracked = self._position_tracker.get_tracked_position(self.palette_window)
-        if tracked is not None:
-            return tracked
-        location = self._get_window_location(self.palette_window)
-        if location is not None:
-            return location
-        return self._palette_desired_location
-
     def toggle_command_palette(self) -> None:
-        """Toggle command palette window (F8)."""
-        if self.command_palette_window is None:
-            self._create_command_palette_window()
-        if self.command_palette_window is None:
+        """Toggle command palette panel (F8)."""
+        if self._devshell_command_palette_panel is None:
             return
-
-        self.command_palette_window.set_context(self._build_command_context())
-        if self.command_palette_window.visible:
-            self._cache_command_palette_desired_location()
-            self.command_palette_window.hide_window()
-            self._activate_main_window()
-            return
-
-        self.update_main_window_position()
-        self._position_command_palette_window(force=False)
-        self.command_palette_window.show_window()
-        self._restore_command_palette_location_after_show()
-        self._activate_main_window()
+        panel = self._devshell_command_palette_panel
+        panel.toggle_visible()
+        self._sync_devshell_panel_order()
+        if self.devshell_coordinator is not None:
+            if panel.visible:
+                self.devshell_coordinator.set_active_panel("command_palette")
+            else:
+                self.devshell_coordinator.set_active_panel(None)
 
     def _register_default_commands(self) -> None:
         """Register built-in command palette commands."""
@@ -865,221 +725,6 @@ class DevVisualizer:
         print("Dev Commands: E export, I import, H help, O overrides panel, F8 palette")
         return True
 
-    def _activate_main_window(self) -> None:
-        """Best-effort focus restoration after palette show/hide.
-
-        On some window managers, hiding a focused window can leave focus in an
-        indeterminate state, which makes rapid key toggles appear "swallowed".
-        """
-        window = self.window
-        if window is None:
-            return
-
-        def _try_activate(_dt: float) -> None:
-            try:
-                if not window.closed:
-                    window.activate()
-            except Exception:
-                return
-
-        # Some platforms only apply focus changes after the event loop ticks.
-        arcade.schedule_once(_try_activate, 0.0)
-        arcade.schedule_once(_try_activate, 0.05)
-
-    def _apply_palette_visibility(self) -> None:
-        """Apply the desired palette visibility, scheduling positioning as needed."""
-        repositioned = False
-        if not self.visible:
-            # DevVisualizer is hidden. Still honor explicit palette toggles (F11)
-            # so the palette can be shown/hidden independently of edit mode.
-            if not self._palette_desired_visible:
-                if self.palette_window is not None:
-                    self._cache_palette_desired_location()
-                    self.palette_window.hide_window()
-                self._log_palette_positions("apply(hidden-devviz/hide)", repositioned=repositioned)
-                return
-
-            # Show palette even while edit mode is off.
-            self._apply_palette_visibility_when_devviz_hidden()
-            return
-
-        if not self._palette_desired_visible:
-            # Cancel any pending show and hide the existing palette window.
-            self._palette_show_pending = False
-            if self.palette_window is not None:
-                self._cache_palette_desired_location()
-                self.palette_window.hide_window()
-            self._activate_main_window()
-            self._log_palette_positions("apply(hide)", repositioned=repositioned)
-            return
-
-        if self.palette_window is None:
-            self._create_palette_window()
-        if self.palette_window is None:
-            self._log_palette_positions("apply(show-failed-create)", repositioned=repositioned)
-            return
-
-        # If we don't yet have a valid main-window location, use the existing poll logic.
-        if self.window is None or not self._main_window_has_valid_location():
-            if not self._palette_show_pending:
-                self._palette_show_pending = True
-                arcade.schedule_once(self._poll_show_palette, 0.0)
-            self._log_palette_positions("apply(show-pending-location)", repositioned=repositioned)
-            return
-
-        # If the main window hasn't moved since we last positioned the palette,
-        # avoid recomputing a new position. Recomputing can introduce drift on
-        # some WMs due to decoration/coordinate inconsistencies across map/unmap.
-        self.update_main_window_position()
-        if self._palette_desired_location is not None and not self._palette_needs_reposition():
-            self._set_palette_location(self._palette_desired_location)
-        else:
-            repositioned = bool(self._position_palette_window(force=True))
-        self.palette_window.show_window()
-        self._restore_palette_location_after_show()
-        self._palette_show_pending = False
-        self._activate_main_window()
-        self._log_palette_positions("apply(show)", repositioned=repositioned)
-
-    def _apply_palette_visibility_when_devviz_hidden(self) -> None:
-        """Show/hide palette while DevVisualizer edit mode is off."""
-        repositioned = False
-        if self.palette_window is None:
-            self._create_palette_window()
-        if self.palette_window is None:
-            self._log_palette_positions("apply(hidden-devviz/show-failed-create)", repositioned=repositioned)
-            return
-
-        if self.window is None or not self._main_window_has_valid_location():
-            if not self._palette_show_pending:
-                self._palette_show_pending = True
-                arcade.schedule_once(self._poll_show_palette, 0.0)
-            self._log_palette_positions("apply(hidden-devviz/show-pending-location)", repositioned=repositioned)
-            return
-
-        self.update_main_window_position()
-        if self._palette_desired_location is not None and not self._palette_needs_reposition():
-            self._set_palette_location(self._palette_desired_location)
-        else:
-            repositioned = bool(self._position_palette_window(force=True))
-
-        self.palette_window.show_window()
-        self._restore_palette_location_after_show()
-        self._activate_main_window()
-        self._log_palette_positions("apply(hidden-devviz/show)", repositioned=repositioned)
-
-    def _main_window_has_valid_location(self) -> bool:
-        window = self.window
-        if window is None:
-            return False
-        try:
-            x, y = window.get_location()
-        except Exception:
-            return False
-        return (x, y) != (0, 0) and x > -32000 and y > -32000
-
-    def _palette_needs_reposition(self) -> bool:
-        """Return True if the palette should be repositioned relative to the main window."""
-        if self.window is None or self.palette_window is None:
-            return True
-        main_location = self._get_window_location(self.window)
-        if main_location is None:
-            return True
-        if self._palette_position_anchor != main_location:
-            return True
-        return False
-
-    def _cache_palette_desired_location(self) -> None:
-        """Cache the palette's current OS-reported location (best-effort).
-
-        This is used to keep the palette stable across hide/show toggles without
-        recomputing a new position (which can drift on some window managers).
-        """
-        if self.palette_window is None:
-            return
-        tracked = self._position_tracker.get_tracked_position(self.palette_window)
-        if tracked is not None:
-            self._palette_desired_location = tracked
-        self._palette_position_anchor = self._get_window_location(self.window)
-
-    def _restore_palette_location_after_show(self) -> None:
-        """Re-apply the cached palette location after showing (best-effort).
-
-        Some window managers adjust a window's position during map/unmap. Also,
-        some platforms ignore `set_location()` while the window is hidden. We
-        therefore set the location again immediately after `show_window()`, and
-        then once more on the next tick.
-        """
-        if self.palette_window is None or self._palette_desired_location is None:
-            return
-
-        desired = self._palette_desired_location
-        self._set_palette_location(desired)
-        self._position_tracker.track_known_position(self.palette_window, desired[0], desired[1])
-
-        def _reassert(_dt: float) -> None:
-            if self.palette_window is None:
-                return
-            if not self._palette_desired_visible or not self.palette_window.visible:
-                return
-            self._set_palette_location(desired)
-            self._position_tracker.track_known_position(self.palette_window, desired[0], desired[1])
-            self._log_palette_positions("reassert(after-show)", repositioned=True)
-
-        arcade.schedule_once(_reassert, 0.0)
-
-    def _set_palette_location(self, loc: tuple[int, int]) -> None:
-        if self.palette_window is None:
-            return
-        try:
-            self.palette_window.set_location(int(loc[0]), int(loc[1]))
-        except Exception:
-            return
-        try:
-            self.palette_window._arcadeactions_last_set_location = (int(loc[0]), int(loc[1]))  # type: ignore[attr-defined]
-        except Exception:
-            return
-
-    def _log_palette_positions(self, tag: str, *, repositioned: bool | None = None) -> None:
-        """Log main + palette window positions (debug only).
-
-        Enable with `ARCADEACTIONS_DEVVIZ_POS_LOG=1`.
-        """
-        if os.environ.get("ARCADEACTIONS_DEVVIZ_POS_LOG") != "1":
-            return
-
-        main_loc = self._safe_window_location(self.window)
-        palette_loc = self._safe_window_location(self.palette_window)
-        desired = self._palette_desired_visible
-        visible = None
-        if self.palette_window is not None:
-            visible = self.palette_window.visible
-        palette_id = None
-        if self.palette_window is not None:
-            palette_id = id(self.palette_window)
-
-        extra = ""
-        if repositioned is not None:
-            extra = f" repositioned={int(repositioned)}"
-        print(
-            f"[DevVisualizer] palette-pos {tag}{extra} desired={int(desired)} visible={visible} "
-            f"main_loc={main_loc} palette_loc={palette_loc} anchor={self._palette_position_anchor} "
-            f"palette_id={palette_id} desired_loc={self._palette_desired_location}"
-        )
-
-    @staticmethod
-    def _safe_window_location(window: arcade.Window | Any | None) -> tuple[int, int] | None:
-        if window is None:
-            return None
-        try:
-            loc = window.get_location()
-        except Exception:
-            return None
-        try:
-            return (int(loc[0]), int(loc[1]))
-        except Exception:
-            return None
-
     def handle_key_press(self, key: int, modifiers: int) -> bool:
         """
         Handle keyboard input for DevVisualizer.
@@ -1092,6 +737,47 @@ class DevVisualizer:
             True if key was handled, False otherwise
         """
         return visualizer_keys.handle_key_press(self, key, modifiers)
+
+    def _devshell_prototype_panel_geometry(self) -> tuple[int, int, int, int] | None:
+        if self._devshell_prototype_palette_panel is None:
+            return None
+        regions = self.devshell_regions()
+        if regions is None:
+            return None
+        if regions.left.width <= 0 or regions.left.height <= 0:
+            return None
+        panel_width = max(220, regions.left.width - 24)
+        panel_height = max(200, regions.left.height - 120)
+        left = regions.left.x + 12
+        bottom = regions.left.y + 56
+        return (left, bottom, panel_width, panel_height)
+
+    def _handle_devshell_prototype_panel_click(self, x: int, y: int, button: int) -> bool:
+        panel = self._devshell_prototype_palette_panel
+        if panel is None:
+            return False
+        if not panel.visible:
+            return False
+        if button != arcade.MOUSE_BUTTON_LEFT:
+            return False
+        geometry = self._devshell_prototype_panel_geometry()
+        if geometry is None:
+            return False
+        left, bottom, width, height = geometry
+        if x < left or x > left + width or y < bottom or y > bottom + height:
+            return False
+        prototypes = panel.prototype_ids()
+        if not prototypes:
+            return True
+        title_height = 34
+        row_height = 20
+        row_top = bottom + height - title_height - 8
+        clicked_index = int((row_top - y) / row_height)
+        if clicked_index < 0 or clicked_index >= len(prototypes):
+            return True
+        panel.selected_index = clicked_index
+        panel.spawn_selected()
+        return True
 
     def handle_mouse_press(self, x: int, y: int, button: int, modifiers: int) -> bool:
         """
@@ -1116,6 +802,9 @@ class DevVisualizer:
         # Only handle left mouse button for dragging and selection
         if button != arcade.MOUSE_BUTTON_LEFT:
             return False
+
+        if self._handle_devshell_prototype_panel_click(x, y, button):
+            return True
 
         # Palette is now in separate window, no need to check here
         ctrl_held = bool(modifiers & arcade.key.MOD_CTRL)
@@ -1571,20 +1260,13 @@ class DevVisualizer:
         return self.overrides_panel.open(sprite)
 
     def open_overrides_editor_for_sprite(self, sprite: object) -> bool:
-        """Open arrange-grid settings editor inside the property inspector window."""
+        """Open arrange-grid settings editor inside the DevShell inspector panel."""
         marker = self._first_arrange_marker(sprite)
         if marker is None:
             return False
         marker_key = self._arrange_marker_key(marker)
         if marker_key is None:
             return False
-
-        needs_recreate = self._property_inspector_window_needs_recreate()
-        if needs_recreate:
-            self._create_property_inspector_window()
-        if self.property_inspector_window is None:
-            return False
-        was_visible = bool(self.property_inspector_window.visible)
 
         file_path, lineno = marker_key
         editor = ArrangeGridEditor(file_path, lineno)
@@ -1599,13 +1281,14 @@ class DevVisualizer:
             nonlocal group
             group = self._apply_arrange_layout_to_group_live(group, kwargs, marker_template=marker_template)
 
-        self.property_inspector_window.show_arrange_mode(
-            editor,
-            on_apply_layout=_apply_layout,
-        )
-        if needs_recreate or not was_visible:
-            self._position_property_inspector_window()
-            self.property_inspector_window.show_window()
+        if self._devshell_property_inspector_panel is None:
+            return False
+        panel = self._devshell_property_inspector_panel
+        panel.show_arrange_mode(editor, on_apply_layout=_apply_layout)
+        panel.set_visible(True)
+        self._sync_devshell_panel_order()
+        if self.devshell_coordinator is not None:
+            self.devshell_coordinator.set_active_panel("property_inspector")
         # No in-canvas override panel in arrange settings workflow.
         self.overrides_panel.visible = False
         return True

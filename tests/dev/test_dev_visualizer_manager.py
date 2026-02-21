@@ -79,8 +79,8 @@ class TestDevVisualizerManager(ActionTestBase):
 
         assert dev_viz.scene_sprites == scene_sprites
         assert dev_viz.visible is False
-        # Palette is now created on-demand when show() is called
-        assert dev_viz.palette_window is None  # Not created until show()
+        # Legacy secondary-window palette was removed; DevShell panels are in-window.
+        assert hasattr(dev_viz, "palette_window") is False
         assert dev_viz.selection_manager is not None
 
     def test_dev_visualizer_auto_creates_scene(self, window):

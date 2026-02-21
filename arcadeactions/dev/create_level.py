@@ -114,7 +114,7 @@ Usage:
 Workflow:
     1. Run the script - DevVisualizer auto-appears
     2. Press F12 to toggle DevVisualizer main overlay
-    3. Press F11 to toggle the sprite palette window
+    3. Press F11 to toggle the DevShell sprite palette panel
     4. Click sprites in palette to spawn them
     5. Click sprites in main window to select them
     6. Press E to export scene to {export_name}.yaml
@@ -188,7 +188,7 @@ def main():
     print("=" * 60)
     print("DevVisualizer auto-enabled! (ARCADEACTIONS_DEVVIZ=1)")
     print("Press F12 to toggle DevVisualizer main overlay")
-    print("Press F11 to open/close sprite palette window")
+    print("Press F11 to open/close DevShell sprite palette panel")
     print("Click prototypes in palette to spawn sprites")
     print("Click sprites in main window to select them")
     print("Press E to export scene to {export_name}.yaml")

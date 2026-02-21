@@ -93,3 +93,62 @@ def test_handle_overrides_panel_key_down_selects_next():
 
     assert handled is True
     assert ("select_next", None) in panel.calls
+
+
+def test_handle_overrides_panel_key_non_open_or_none_returns_false():
+    panel = StubPanel()
+    panel._open = False
+
+    assert overrides_input.handle_overrides_panel_key(panel, arcade.key.ENTER, 0) is False
+    assert overrides_input.handle_overrides_panel_key(None, arcade.key.ENTER, 0) is False
+
+
+def test_handle_overrides_panel_key_editing_and_navigation_variants():
+    panel = StubPanel()
+    panel.editing = True
+
+    assert overrides_input.handle_overrides_panel_key(panel, arcade.key.ENTER, 0) is True
+    assert ("commit_edit", None) in panel.calls
+    assert overrides_input.handle_overrides_panel_key(panel, arcade.key.ESCAPE, 0) is True
+    assert ("cancel_edit", None) in panel.calls
+    assert overrides_input.handle_overrides_panel_key(panel, arcade.key.BACKSPACE, 0) is True
+    assert ("handle_input_char", "\b") in panel.calls
+    assert overrides_input.handle_overrides_panel_key(panel, arcade.key.TAB, 0) is True
+    assert panel._editing_field == "y"
+
+    panel.editing = False
+    assert overrides_input.handle_overrides_panel_key(panel, arcade.key.X, 0) is True
+    assert overrides_input.handle_overrides_panel_key(panel, arcade.key.Y, 0) is True
+    assert overrides_input.handle_overrides_panel_key(panel, arcade.key.LEFT, 0) is True
+    assert overrides_input.handle_overrides_panel_key(panel, arcade.key.RIGHT, 0) is True
+    assert overrides_input.handle_overrides_panel_key(panel, arcade.key.PAGEUP, 0) is True
+    assert overrides_input.handle_overrides_panel_key(panel, arcade.key.PAGEDOWN, 0) is True
+    assert overrides_input.handle_overrides_panel_key(panel, arcade.key.DELETE, 0) is True
+
+
+def test_handle_overrides_panel_key_undo_and_text_exception_paths():
+    panel = StubPanel()
+
+    def raise_key(_key: str) -> None:
+        raise RuntimeError("boom")
+
+    panel.handle_key = raise_key
+    assert overrides_input.handle_overrides_panel_key(panel, arcade.key.Z, arcade.key.MOD_CTRL) is True
+
+    panel.editing = True
+
+    def raise_input(_text: str) -> None:
+        raise RuntimeError("boom")
+
+    panel.handle_input_char = raise_input
+    assert overrides_input.handle_overrides_panel_text(panel, "abc") is True
+
+
+def test_handle_overrides_panel_text_requires_open_and_editing():
+    panel = StubPanel()
+
+    assert overrides_input.handle_overrides_panel_text(panel, "x") is False
+    panel.editing = True
+    panel._open = False
+    assert overrides_input.handle_overrides_panel_text(panel, "x") is False
+    assert overrides_input.handle_overrides_panel_text(None, "x") is False

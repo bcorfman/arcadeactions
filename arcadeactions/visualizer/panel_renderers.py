@@ -390,13 +390,16 @@ class TimelineRenderer:
     def draw(self) -> None:
         if self._background_rect is None:
             return
-        arcade.draw_lbwh_rectangle_filled(*self._background_rect)
-        for left, bottom, right, top, color in self._bars:
-            arcade.draw_lrbt_rectangle_filled(left, right, bottom, top, color)
+        try:
+            arcade.draw_lbwh_rectangle_filled(*self._background_rect)
+            for left, bottom, right, top, color in self._bars:
+                arcade.draw_lrbt_rectangle_filled(left, right, bottom, top, color)
 
-        # Draw green outlines for highlighted bars
-        for left, bottom, right, top in self._highlight_outlines:
-            arcade.draw_lrbt_rectangle_outline(left, right, bottom, top, arcade.color.LIME_GREEN, border_width=3)
+            # Draw green outlines for highlighted bars
+            for left, bottom, right, top in self._highlight_outlines:
+                arcade.draw_lrbt_rectangle_outline(left, right, bottom, top, arcade.color.LIME_GREEN, border_width=3)
+        except GLException:
+            pass
 
         _sync_text_objects(self.text_objects, self._text_specs, self._last_text_specs)
         try:
@@ -406,8 +409,11 @@ class TimelineRenderer:
             self.text_objects = []
             self._last_text_specs = []
             _sync_text_objects(self.text_objects, self._text_specs, self._last_text_specs)
-            for label in self.text_objects:
-                label.draw()
+            try:
+                for label in self.text_objects:
+                    label.draw()
+            except GLException:
+                return
 
 
 class GuideRenderer:

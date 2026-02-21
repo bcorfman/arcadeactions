@@ -31,17 +31,29 @@ from pathlib import Path
 
 from . import code_parser
 from .boundary_overlay import BoundaryGizmo, BoundaryHandle
-from .command_palette import CommandPaletteWindow
 from .command_registry import CommandExecutionContext, CommandRegistry
+from .devshell_command_palette_panel import DevShellCommandPalettePanel
+from .devshell_coordinator import DevShellCoordinator
+from .devshell_focus import DevShellFocusManager
+from .devshell_input_router import DevShellInputRouter
+from .devshell_layout import DevShellLayout, DevShellRect, DevShellRegions
+from .devshell_property_inspector_panel import DevShellPropertyInspectorPanel
+from .devshell_prototype_palette_panel import DevShellPrototypePalettePanel
+from .devshell_state import (
+    DevShellFocusVisualState,
+    DevShellMode,
+    DevShellPanelVisualState,
+    DevShellStateController,
+)
+from .devshell_text_buffer import DevShellTextBuffer
 from .palette import PaletteSidebar
-from .palette_window import PaletteWindow
 from .presets import (
     ActionPresetRegistry,
     get_preset_registry,
     register_preset,
 )
 from .property_history import PropertyHistory
-from .property_inspector import PropertyInspectorWindow, SpritePropertyInspector
+from .property_inspector import SpritePropertyInspector
 from .property_registry import PropertyDefinition, SpritePropertyRegistry
 from .prototype_registry import (
     DevContext,
@@ -78,18 +90,29 @@ __all__ = [
     "register_preset",
     "get_preset_registry",
     "PaletteSidebar",
-    "PaletteWindow",
     "PropertyDefinition",
     "PropertyHistory",
     "SpritePropertyRegistry",
     "SpritePropertyInspector",
-    "PropertyInspectorWindow",
     "SelectionManager",
     "BoundaryGizmo",
     "BoundaryHandle",
     "CommandRegistry",
     "CommandExecutionContext",
-    "CommandPaletteWindow",
+    "DevShellCommandPalettePanel",
+    "DevShellCoordinator",
+    "DevShellPropertyInspectorPanel",
+    "DevShellPrototypePalettePanel",
+    "DevShellLayout",
+    "DevShellRect",
+    "DevShellRegions",
+    "DevShellFocusManager",
+    "DevShellInputRouter",
+    "DevShellMode",
+    "DevShellPanelVisualState",
+    "DevShellFocusVisualState",
+    "DevShellStateController",
+    "DevShellTextBuffer",
     "export_template",
     "load_scene_template",
     "SYMBOLIC",

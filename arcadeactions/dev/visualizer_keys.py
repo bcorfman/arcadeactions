@@ -21,6 +21,9 @@ def handle_key_press(dev_viz: Any, key: int, modifiers: int) -> bool:
         dev_viz.toggle_command_palette()
         return True
 
+    if key == arcade.key.F10:
+        return bool(dev_viz.toggle_preview_clean_mode())
+
     if key == arcade.key.E:
         return _export_scene(dev_viz)
 
