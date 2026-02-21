@@ -1320,6 +1320,20 @@ Use `-k` filters or direct paths for faster iterations:
 uv run python -m pytest tests/test_frame_timing.py -k after_frames
 ```
 
+### Coverage Gate (CI)
+
+Coverage on historical code paths is still being raised incrementally. To prevent new
+refactors from regressing test quality, CI enforces **>=90% diff coverage** on pull
+requests (changed lines only):
+
+```bash
+uv run pytest tests/ --cov=arcadeactions --cov-report=xml
+uv run diff-cover coverage.xml --compare-branch=origin/main --fail-under=90
+```
+
+This gives an immediate quality floor for new code while the legacy baseline is
+improved in parallel.
+
 ## Troubleshooting
 
 - **Action counter drift:** confirm your test or fixture resets `Action._frame_counter`
