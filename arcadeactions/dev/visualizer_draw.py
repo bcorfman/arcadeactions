@@ -25,19 +25,48 @@ def draw_visualizer(dev_viz: Any) -> None:
     if not has_window_context(dev_viz.window):
         return
 
-    try:
-        _draw_devshell_layout(dev_viz)
-        _draw_indicator(dev_viz)
-        _draw_devshell_focus_overlay(dev_viz)
-        _draw_devshell_panels(dev_viz)
-        if not _draw_selection(dev_viz):
-            return
-        _draw_gizmos(dev_viz)
-        _draw_source_markers(dev_viz)
-    except Exception as exc:
-        import sys
+    _run_draw_step(_draw_devshell_layout, dev_viz)
+    _run_draw_step(_draw_indicator, dev_viz)
+    _run_draw_step(_draw_devshell_focus_overlay, dev_viz)
+    _run_draw_step(_draw_devshell_panels, dev_viz)
+    if not _run_selection_draw_step(dev_viz):
+        return
+    _run_draw_step(_draw_gizmos, dev_viz)
+    _run_draw_step(_draw_source_markers, dev_viz)
 
-        print(f"[DevVisualizer] Draw error: {exc!r}", file=sys.stderr)
+
+def _run_draw_step(step: Any, dev_viz: Any) -> None:
+    """Run one draw step while isolating backend-specific OpenGL failures."""
+    try:
+        step(dev_viz)
+    except RuntimeError as exc:
+        if "No OpenGL context available" in str(exc):
+            return
+        _log_draw_error(exc)
+        return
+    except Exception as exc:
+        _log_draw_error(exc)
+        return
+
+
+def _run_selection_draw_step(dev_viz: Any) -> bool:
+    """Run selection draw step while preserving existing early-return semantics."""
+    try:
+        return bool(_draw_selection(dev_viz))
+    except RuntimeError as exc:
+        if "No OpenGL context available" in str(exc):
+            return True
+        _log_draw_error(exc)
+        return True
+    except Exception as exc:
+        _log_draw_error(exc)
+        return True
+
+
+def _log_draw_error(exc: Exception) -> None:
+    import sys
+
+    print(f"[DevVisualizer] Draw error: {exc!r}", file=sys.stderr)
 
 
 def _draw_text_obj(

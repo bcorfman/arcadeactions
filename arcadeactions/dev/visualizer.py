@@ -53,6 +53,7 @@ from arcadeactions.dev.visualizer_protocols import (
 from arcadeactions.dev.window_position_tracker import WindowPositionTracker
 
 _MISSING_GIZMO_REFRESH_SECONDS = 0.25
+_get_primary_monitor_rect = window_utils.get_primary_monitor_rect
 
 __all__ = [
     "DevVisualizer",

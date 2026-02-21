@@ -160,6 +160,7 @@ class HeadlessWindow:
         self.width = width
         self.height = height
         self.visible = visible
+        self._context = None
         self.has_exit = False
         self.location: tuple[int, int] = (0, 0)
         self._title = kwargs.get("title", "Headless Window")
@@ -176,6 +177,9 @@ class HeadlessWindow:
 
     def set_location(self, x: int, y: int) -> None:
         self.location = (x, y)
+
+    def get_location(self) -> tuple[int, int]:
+        return self.location
 
     def set_caption(self, title: str) -> None:
         self._title = title
