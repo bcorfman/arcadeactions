@@ -149,6 +149,8 @@ class DevVisualizer:
         self._gizmo_miss_refresh_at: WeakKeyDictionary[arcade.Sprite, float] = WeakKeyDictionary()
         self._frozen_sprite_motion: WeakKeyDictionary[arcade.Sprite, tuple[float, float, float]] = WeakKeyDictionary()
         self._position_tracker = WindowPositionTracker()
+        self._window_decoration_dx: int | None = None
+        self._window_decoration_dy: int | None = None
 
         # Create indicator text (shown when DevVisualizer is active)
         self._indicator_text = arcade.Text(
@@ -323,6 +325,33 @@ class DevVisualizer:
         """Get the tracked position for a window."""
         return self._position_tracker.get_tracked_position(window)
 
+    @staticmethod
+    def _is_valid_window_location(location: tuple[int, int] | None) -> bool:
+        """Return True when location looks like a mapped on-screen coordinate."""
+        if location is None:
+            return False
+        x, y = location
+        if (x, y) == (0, 0):
+            # Wayland commonly reports (0, 0) before mapping.
+            return False
+        min_coord = -32768
+        if x < min_coord or y < min_coord:
+            return False
+        return True
+
+    def _get_window_location(self, window: arcade.Window | None) -> tuple[int, int] | None:
+        """Get best-known window location using OS, then tracked fallback."""
+        if window is None:
+            return None
+        raw_location: tuple[int, int] | None = None
+        try:
+            raw_location = window.get_location()
+        except Exception:
+            raw_location = None
+        if self._is_valid_window_location(raw_location):
+            return raw_location
+        return self._get_tracked_window_position(window)
+
     def reset_scene(self, scene_sprites: arcade.SpriteList) -> None:
         """Reset DevVisualizer state to use a new SpriteList.
 
@@ -346,6 +375,17 @@ class DevVisualizer:
         window = self.window
         if window is None:
             return False
+        actual_location = self._get_window_location(window)
+        requested_location: tuple[int, int] | None
+        try:
+            requested_location = window._arcadeactions_last_set_location
+        except AttributeError:
+            requested_location = None
+        if actual_location is not None and requested_location is not None:
+            requested_x, requested_y = requested_location
+            actual_x, actual_y = actual_location
+            self._window_decoration_dx = int(actual_x - requested_x)
+            self._window_decoration_dy = int(actual_y - requested_y)
         return self.track_window_position(window)
 
     def attach_to_window(self, window: arcade.Window | None = None) -> bool:
