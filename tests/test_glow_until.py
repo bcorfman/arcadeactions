@@ -266,3 +266,35 @@ class TestGlowUntilErrorHandling:
         assert cloned._auto_resize == original._auto_resize
         assert cloned._draw_order == original._draw_order
         assert cloned.condition != original.condition  # Different condition instance
+
+    def test_manual_duration_completion_skips_condition_and_passes_none_to_callback(self):
+        """Manual duration completion should stop before condition evaluation and pass None."""
+        from arcadeactions.conditional import GlowUntil
+
+        fake = FakeShadertoy()
+        callback_args: list[tuple[object, ...]] = []
+        condition_calls = {"count": 0}
+
+        def condition_with_data():
+            condition_calls["count"] += 1
+            return {"source": "condition"}
+
+        def on_stop(*args):
+            callback_args.append(args)
+
+        action = GlowUntil(
+            shadertoy_factory=make_shadertoy_factory(fake),
+            condition=condition_with_data,
+            on_stop=on_stop,
+        )
+        action.apply(types.SimpleNamespace())
+        action._duration = 0.01
+
+        Action.update_all(0.02)
+
+        assert action.done
+        assert action._condition_met
+        assert action.condition_data is None
+        assert condition_calls["count"] == 0
+        assert callback_args == [((None),)]
+        assert fake.render_calls == 0

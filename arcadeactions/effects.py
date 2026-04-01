@@ -296,13 +296,10 @@ class GlowUntil(_Action):
             self._elapsed += delta_time
             if self._elapsed >= self._duration - 1e-9:
                 # Stop without rendering this frame
-                self._condition_met = True
-                self.done = True
-                if self.on_stop:
-                    try:
-                        self.on_stop(None)
-                    except Exception:
-                        pass
+                try:
+                    self._complete_action(mark_condition_met=True, callback_payload=None, safe_callback=False)
+                except Exception:
+                    pass
                 return
 
         # Prepare uniforms
@@ -414,14 +411,7 @@ class EmitParticlesUntil(_Action):
 
             # Check if duration has elapsed
             if self._elapsed >= self._duration:
-                self._condition_met = True
-                self.remove_effect()
-                self.done = True
-                if self.on_stop:
-                    try:
-                        self.on_stop()
-                    except Exception:
-                        pass
+                self._complete_action(remove_effect=True, mark_condition_met=True)
                 return
 
         def update_for_sprite(sprite):

@@ -153,6 +153,35 @@ class TestMoveXUntil:
             assert sprite.change_x == 7
             assert sprite.change_y == 0
 
+    def test_move_x_until_duration_completion_skips_condition_and_clears_velocities(self, test_sprite):
+        """Duration completion should stop before the external condition and clear velocities."""
+        test_sprite.change_x = 0
+        test_sprite.change_y = 9
+        condition_calls = {"count": 0}
+        callback_calls = {"count": 0}
+
+        def condition_with_data():
+            condition_calls["count"] += 1
+            return {"source": "condition"}
+
+        condition_with_data._duration_seconds = 0.01  # type: ignore[attr-defined]
+
+        def on_stop():
+            callback_calls["count"] += 1
+
+        action = MoveXUntil(velocity=(5, 0), condition=condition_with_data, on_stop=on_stop)
+        action.apply(test_sprite)
+
+        Action.update_all(0.02)
+
+        assert action.done
+        assert action._condition_met
+        assert action.condition_data is None
+        assert condition_calls["count"] == 0
+        assert callback_calls["count"] == 1
+        assert test_sprite.change_x == 0
+        assert test_sprite.change_y == 0
+
 
 class TestMoveYUntil:
     """Test suite for MoveYUntil - Y-axis only movement."""
@@ -271,6 +300,35 @@ class TestMoveYUntil:
         for sprite in test_sprite_list:
             assert sprite.change_x == 0
             assert sprite.change_y == 7
+
+    def test_move_y_until_duration_completion_skips_condition_and_clears_velocities(self, test_sprite):
+        """Duration completion should stop before the external condition and clear velocities."""
+        test_sprite.change_x = 11
+        test_sprite.change_y = 0
+        condition_calls = {"count": 0}
+        callback_calls = {"count": 0}
+
+        def condition_with_data():
+            condition_calls["count"] += 1
+            return {"source": "condition"}
+
+        condition_with_data._duration_seconds = 0.01  # type: ignore[attr-defined]
+
+        def on_stop():
+            callback_calls["count"] += 1
+
+        action = MoveYUntil(velocity=(0, 6), condition=condition_with_data, on_stop=on_stop)
+        action.apply(test_sprite)
+
+        Action.update_all(0.02)
+
+        assert action.done
+        assert action._condition_met
+        assert action.condition_data is None
+        assert condition_calls["count"] == 0
+        assert callback_calls["count"] == 1
+        assert test_sprite.change_x == 0
+        assert test_sprite.change_y == 0
 
 
 class TestAxisComposition:

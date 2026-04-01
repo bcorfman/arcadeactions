@@ -160,14 +160,9 @@ class ParametricMotionUntil(_Action):
             # endregion agent log
             self._agent_logged_update = True
 
-        if progress >= 1.0:
-            if not hasattr(self.condition, "_frame_count"):
-                # No frame-based condition is driving completion; mark done ourselves.
-                self._condition_met = True
-                self.done = True
-
-                if self.on_stop:
-                    self.on_stop(None)
+        if progress >= 1.0 and self._frame_duration == 0.0:
+            # No frame-based condition is driving completion; mark done ourselves.
+            self._complete_action(mark_condition_met=True, callback_payload=None, safe_callback=False)
 
     def remove_effect(self) -> None:
         """

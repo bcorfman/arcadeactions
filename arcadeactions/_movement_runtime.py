@@ -169,11 +169,7 @@ class _MoveUntilRuntimeMixin:
                     f"update_effect: id={id(self)}, duration elapsed ({self._duration:.4f}s) - stopping",
                     action="MoveUntil",
                 )
-                self._condition_met = True
-                self.remove_effect()
-                self.done = True
-                if self.on_stop:
-                    self.on_stop()
+                self._complete_action(remove_effect=True, mark_condition_met=True, safe_callback=False)
                 return
 
         # Default to using current_velocity for dx/dy so update_effect works even when

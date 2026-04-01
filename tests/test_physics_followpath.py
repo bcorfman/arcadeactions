@@ -224,6 +224,75 @@ def test_followpath_completion_with_callback() -> None:
     assert len(callback_triggered) > 0, "on_stop callback should be triggered on path completion"
 
 
+def test_followpath_natural_completion_skips_external_condition_same_frame() -> None:
+    """Natural path completion should win before an external condition is consulted."""
+    sprite = arcade.Sprite()
+    sprite.center_x = 100
+    sprite.center_y = 100
+    callback_args: list[tuple[object, ...]] = []
+    condition_calls = {"count": 0}
+
+    def condition_with_data():
+        condition_calls["count"] += 1
+        return {"source": "condition"}
+
+    def on_stop(*args):
+        callback_args.append(args)
+
+    action = FollowPathUntil(
+        control_points=[(100, 100), (101, 100)],
+        velocity=1000,
+        condition=condition_with_data,
+        on_stop=on_stop,
+    )
+    action.apply(sprite)
+
+    Action.update_all(1 / 60)
+
+    assert action.done
+    assert condition_calls["count"] == 0
+    assert callback_args == [()]
+    assert action.condition_data is None
+    assert sprite.center_x == pytest.approx(101.0)
+    assert sprite.center_y == pytest.approx(100.0)
+
+
+def test_followpath_external_condition_data_stops_before_path_completion() -> None:
+    """External stop data should propagate unchanged when the path has not completed yet."""
+    sprite = arcade.Sprite()
+    sprite.center_x = 0
+    sprite.center_y = 0
+    callback_args: list[tuple[object, ...]] = []
+    condition_calls = {"count": 0}
+
+    def condition_with_data():
+        condition_calls["count"] += 1
+        if condition_calls["count"] >= 2:
+            return {"reason": "interrupt", "frame": condition_calls["count"]}
+        return False
+
+    def on_stop(*args):
+        callback_args.append(args)
+
+    action = FollowPathUntil(
+        control_points=[(0, 0), (1000, 0)],
+        velocity=30,
+        condition=condition_with_data,
+        on_stop=on_stop,
+    )
+    action.apply(sprite)
+
+    for _ in range(5):
+        Action.update_all(1 / 60)
+        if action.done:
+            break
+
+    assert action.done
+    assert callback_args == [({"reason": "interrupt", "frame": 2},)]
+    assert action.condition_data == {"reason": "interrupt", "frame": 2}
+    assert sprite.center_x < 1000
+
+
 def test_followpath_small_movement_with_rotation() -> None:
     """Test rotation handling when movement vector is very small."""
     sprite = arcade.Sprite()

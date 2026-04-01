@@ -252,7 +252,7 @@ class TweenUntil(_Action):
         Override update to ensure tween logic runs before condition check.
         This prevents race conditions where condition is met before _completed_naturally is set.
         """
-        if not self._is_active or self.done or self._paused:
+        if self._should_skip_update():
             return
 
         # Update the tween effect first - this may set _completed_naturally and self.done
@@ -263,19 +263,7 @@ class TweenUntil(_Action):
             return
 
         # Now check external condition
-        if self.condition and not self._condition_met:
-            condition_result = self.condition()
-            if condition_result:
-                self._condition_met = True
-                self.condition_data = condition_result
-
-                self.remove_effect()
-                self.done = True
-                if self.on_stop:
-                    if condition_result is not True:
-                        self.on_stop(condition_result)
-                    else:
-                        self.on_stop()
+        self._check_condition_for_completion(safe_callback=False)
 
     def set_factor(self, factor: float) -> None:
         """Scale the tween speed by the given factor.
@@ -316,9 +304,7 @@ class TweenUntil(_Action):
         if self._frame_duration == 0:
             # If duration is zero, immediately set to the end value.
             self.for_each_sprite(lambda sprite: setattr(sprite, self.property_name, self.end_value))
-            self.done = True
-            if self.on_stop:
-                self.on_stop(None)
+            self._complete_action(callback_payload=None, safe_callback=False)
             return
 
         # For positive duration, set the initial value on all sprites.
@@ -360,9 +346,7 @@ class TweenUntil(_Action):
 
             self.for_each_sprite(lambda sprite: setattr(sprite, self.property_name, self.end_value))
             self._completed_naturally = True  # Mark as naturally completed
-            self.done = True
-            if self.on_stop:
-                self.on_stop()
+            self._complete_action(safe_callback=False)
 
     def remove_effect(self) -> None:
         """Clean up the tween effect.

@@ -1064,6 +1064,31 @@ class TestTweenUntilCoverage(ActionTestBase):
         assert action.done
         assert calls["count"] == 1
 
+    def test_tween_natural_completion_skips_external_condition_same_frame(self):
+        """Natural tween completion should win before any external condition is evaluated."""
+        sprite = create_test_sprite()
+        callback_args: list[tuple[object, ...]] = []
+        condition_calls = {"count": 0}
+
+        def condition_with_data():
+            condition_calls["count"] += 1
+            return {"source": "condition"}
+
+        def on_stop(*args):
+            callback_args.append(args)
+
+        action = TweenUntil(0, 10, "center_x", condition_with_data, on_stop=on_stop)
+        action._frame_duration = 1
+        action.apply(sprite, tag="tween_natural_wins")
+
+        Action.update_all(1 / 60)
+
+        assert action.done
+        assert sprite.center_x == 10
+        assert condition_calls["count"] == 0
+        assert callback_args == [()]
+        assert action.condition_data is None
+
     def test_set_factor_and_remove_effect_reset_coverage(self):
         """set_factor should reapply velocity immediately and remove_effect resets start."""
         sprite = create_test_sprite()

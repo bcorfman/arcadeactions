@@ -248,11 +248,7 @@ class FollowPathUntil(_Action):
         self._update_path_snapshot()
 
         if self._curve_progress >= 1.0 and not self.done:
-            self._condition_met = True
-            self.done = True
-            self.remove_effect()
-            if self.on_stop:
-                self._safe_call(self.on_stop, None)
+            self._complete_action(remove_effect=True, mark_condition_met=True, callback_payload=None)
 
     def _update_path_snapshot(self) -> None:
         self._update_snapshot(

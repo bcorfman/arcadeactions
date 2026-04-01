@@ -115,11 +115,7 @@ class MoveXUntil(MoveUntil):
                     f"MoveXUntil.update_effect: duration elapsed ({self._duration:.4f}s) - stopping",
                     action="MoveXUntil",
                 )
-                self._condition_met = True
-                self.remove_effect()
-                self.done = True
-                if self.on_stop:
-                    self.on_stop()
+                self._complete_action(remove_effect=True, mark_condition_met=True, safe_callback=False)
                 return
 
         # Re-apply velocity from provider if available (X-axis only)
@@ -306,11 +302,7 @@ class MoveYUntil(MoveUntil):
                     f"MoveYUntil.update_effect: duration elapsed ({self._duration:.4f}s) - stopping",
                     action="MoveYUntil",
                 )
-                self._condition_met = True
-                self.remove_effect()
-                self.done = True
-                if self.on_stop:
-                    self.on_stop()
+                self._complete_action(remove_effect=True, mark_condition_met=True, safe_callback=False)
                 return
 
         # Re-apply velocity from provider if available (Y-axis only)

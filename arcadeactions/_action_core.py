@@ -12,6 +12,7 @@ from ._action_manager import ActionManagerMixin
 from ._action_targets import SpriteTarget, TargetAdapter, adapt_target, _get_sprite_list_name
 
 _T = TypeVar("_T", bound="Action")
+_NO_CALLBACK_PAYLOAD = object()
 
 
 class Action(ActionManagerMixin, ActionInstrumentationMixin, ActionCallbacksMixin, ABC, Generic[_T]):
@@ -133,37 +134,86 @@ class Action(ActionManagerMixin, ActionInstrumentationMixin, ActionCallbacksMixi
         pass
 
     def update(self, delta_time: float) -> None:
-        if not self._is_active or self.done or self._paused:
+        if self._should_skip_update():
             return
 
         self.update_effect(delta_time)
-
-        if self.condition and not self._condition_met:
-            condition_result = self.condition()
-
-            if self._instrumentation_active():
-                self._record_condition_evaluation(condition_result)
-
-            if condition_result:
-                self._condition_met = True
-                self.condition_data = condition_result
-                self.remove_effect()
-                self.done = True
-
-                if self._instrumentation_active():
-                    self._record_event("stopped", condition_data=condition_result)
-
-                if self.on_stop:
-                    if condition_result is not True:
-                        self._safe_call(self.on_stop, condition_result)
-                    else:
-                        self._safe_call(self.on_stop)
+        self._check_condition_for_completion()
 
     def update_effect(self, delta_time: float) -> None:
         pass
 
     def remove_effect(self) -> None:
         pass
+
+    def _should_skip_update(self) -> bool:
+        return not self._is_active or self.done or self._paused
+
+    def _check_condition_for_completion(self, *, safe_callback: bool = True) -> bool:
+        if not self.condition or self._condition_met:
+            return False
+
+        condition_result = self.condition()
+
+        if self._instrumentation_active():
+            self._record_condition_evaluation(condition_result)
+
+        if not condition_result:
+            return False
+
+        self._complete_due_to_condition(condition_result, safe_callback=safe_callback)
+        return True
+
+    def _complete_due_to_condition(self, condition_result: Any, *, safe_callback: bool = True) -> None:
+        self._condition_met = True
+        self.condition_data = condition_result
+        callback_payload = _NO_CALLBACK_PAYLOAD if condition_result is True else condition_result
+        self._complete_action(
+            allow_already_done=True,
+            remove_effect=True,
+            callback_payload=callback_payload,
+            safe_callback=safe_callback,
+            record_stop_event=True,
+        )
+
+    def _complete_action(
+        self,
+        *,
+        allow_already_done: bool = False,
+        remove_effect: bool = False,
+        mark_condition_met: bool = False,
+        callback_payload: Any = _NO_CALLBACK_PAYLOAD,
+        safe_callback: bool = True,
+        record_stop_event: bool = False,
+    ) -> None:
+        if self.done and not allow_already_done:
+            return
+
+        if mark_condition_met:
+            self._condition_met = True
+
+        if remove_effect:
+            self.remove_effect()
+
+        self.done = True
+
+        if record_stop_event and self._instrumentation_active():
+            self._record_event("stopped", condition_data=self.condition_data)
+
+        if self.on_stop is None:
+            return
+
+        if callback_payload is _NO_CALLBACK_PAYLOAD:
+            if safe_callback:
+                self._safe_call(self.on_stop)
+            else:
+                self.on_stop()
+            return
+
+        if safe_callback:
+            self._safe_call(self.on_stop, callback_payload)
+        else:
+            self.on_stop(callback_payload)
 
     def stop(self) -> None:
         _debug_log_action(self, 2, f"stop() called done={self.done} _is_active={self._is_active}")

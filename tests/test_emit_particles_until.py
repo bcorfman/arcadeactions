@@ -294,3 +294,37 @@ class TestEmitParticlesUntilErrorHandling:
         # Emitter should still exist in snapshot but not be destroyed
         emitter = next(iter(action._emitters_snapshot.values()))
         assert emitter.destroy_calls == 0
+
+    def test_manual_duration_completion_skips_condition_and_cleans_up_emitters(self, test_sprite):
+        """Manual duration completion should stop before condition evaluation and destroy emitters."""
+        from arcadeactions.conditional import EmitParticlesUntil
+
+        callback_calls = {"count": 0}
+        condition_calls = {"count": 0}
+
+        def condition_with_data():
+            condition_calls["count"] += 1
+            return {"source": "condition"}
+
+        def on_stop():
+            callback_calls["count"] += 1
+
+        action = EmitParticlesUntil(
+            emitter_factory=make_emitter_factory(),
+            condition=condition_with_data,
+            on_stop=on_stop,
+            destroy_on_stop=True,
+        )
+        action.apply(test_sprite)
+        action._duration = 0.01
+
+        Action.update_all(0.02)
+
+        assert action.done
+        assert action._condition_met
+        assert action.condition_data is None
+        assert condition_calls["count"] == 0
+        assert callback_calls["count"] == 1
+        assert action._emitters == {}
+        emitter = next(iter(action._emitters_snapshot.values()))
+        assert emitter.destroy_calls == 1
