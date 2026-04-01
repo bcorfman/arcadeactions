@@ -169,6 +169,7 @@ class Action(ActionManagerMixin, ActionInstrumentationMixin, ActionCallbacksMixi
         self.condition_data = condition_result
         callback_payload = _NO_CALLBACK_PAYLOAD if condition_result is True else condition_result
         self._complete_action(
+            allow_already_done=True,
             remove_effect=True,
             callback_payload=callback_payload,
             safe_callback=safe_callback,
@@ -178,13 +179,14 @@ class Action(ActionManagerMixin, ActionInstrumentationMixin, ActionCallbacksMixi
     def _complete_action(
         self,
         *,
+        allow_already_done: bool = False,
         remove_effect: bool = False,
         mark_condition_met: bool = False,
         callback_payload: Any = _NO_CALLBACK_PAYLOAD,
         safe_callback: bool = True,
         record_stop_event: bool = False,
     ) -> None:
-        if self.done:
+        if self.done and not allow_already_done:
             return
 
         if mark_condition_met:
