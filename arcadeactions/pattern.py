@@ -455,8 +455,7 @@ def create_orbit_pattern(center: tuple[float, float], radius: float, velocity: f
 
             # Mark action complete when all sprites have completed one orbit
             if per_sprite_done and all(per_sprite_done):
-                self._condition_met = True
-                self.done = True
+                self._complete_action(mark_condition_met=True)
 
         def reset(self):
             """Reset the action to its initial state."""

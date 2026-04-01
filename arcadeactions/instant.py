@@ -44,10 +44,7 @@ class MoveTo(_Action):
         self.for_each_sprite(_set_pos)
 
         # Complete instantly
-        self._condition_met = True
-        self.done = True
-        if self.on_stop:
-            self._safe_call(self.on_stop, None)
+        self._complete_action(mark_condition_met=True, callback_payload=None)
         # Remove from active actions immediately
         self.stop()
 
@@ -102,10 +99,7 @@ class MoveBy(_Action):
         self.for_each_sprite(_add_pos)
 
         # Complete instantly
-        self._condition_met = True
-        self.done = True
-        if self.on_stop:
-            self._safe_call(self.on_stop, None)
+        self._complete_action(mark_condition_met=True, callback_payload=None)
         # Remove from active actions immediately
         self.stop()
 

@@ -127,6 +127,25 @@ def test_orbit_pattern_reset_and_clone():
     assert clone is not action
 
 
+def test_orbit_pattern_marks_condition_met_on_completion(cleanup_actions):
+    action = create_orbit_pattern((0, 0), radius=12, velocity=4, clockwise=True)
+    sprite = arcade.Sprite(":resources:images/items/star.png")
+    sprite.center_x = 12
+    sprite.center_y = 0
+
+    action.apply(sprite, tag="orbit_condition_met")
+
+    for _ in range(600):
+        Action.update_all(1 / 60)
+        if action.done:
+            break
+
+    assert action.done
+    assert action._condition_met
+    assert pytest.approx(sprite.center_x, abs=1e-1) == 12
+    assert pytest.approx(sprite.center_y, abs=1e-1) == 0
+
+
 def test_create_bounce_pattern_validates_axis():
     with pytest.raises(ValueError):
         create_bounce_pattern((5, 0), (0, 0, 100, 100), axis="z")

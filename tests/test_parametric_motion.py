@@ -147,6 +147,68 @@ class TestParametricMotion:
         assert len(calls) == 1
         assert calls[0] is None
 
+    def test_frame_based_completion_uses_condition_result_and_zero_arg_callback(self):
+        """Frame-based completion should finish through the base condition path."""
+        sprite = arcade.Sprite(":resources:images/items/star.png")
+        sprite.center_x = 25
+        sprite.center_y = 40
+        callback_args: list[tuple[object, ...]] = []
+
+        def offset_fn(t: float) -> tuple[float, float]:
+            return 12.0 * t, 6.0 * t
+
+        def on_stop(*args):
+            callback_args.append(args)
+
+        action = ParametricMotionUntil(
+            offset_fn=offset_fn,
+            condition=after_frames(1),
+            on_stop=on_stop,
+        )
+        action.apply(sprite, tag="param_frame_based_completion")
+
+        Action.update_all(1 / 60)
+
+        assert action.done
+        assert callback_args == [()]
+        assert action.condition_data is True
+        assert pytest.approx(sprite.center_x, abs=1e-3) == 37.0
+        assert pytest.approx(sprite.center_y, abs=1e-3) == 46.0
+
+    def test_non_frame_condition_is_skipped_when_parametric_motion_self_completes(self):
+        """Without frame metadata, natural completion should occur before the condition is evaluated."""
+        sprite = arcade.Sprite(":resources:images/items/star.png")
+        sprite.center_x = 10
+        sprite.center_y = 20
+        callback_args: list[tuple[object, ...]] = []
+        condition_calls = {"count": 0}
+
+        def offset_fn(t: float) -> tuple[float, float]:
+            return 30.0 * t, 5.0 * t
+
+        def condition_with_data():
+            condition_calls["count"] += 1
+            return {"source": "condition"}
+
+        def on_stop(*args):
+            callback_args.append(args)
+
+        action = ParametricMotionUntil(
+            offset_fn=offset_fn,
+            condition=condition_with_data,
+            on_stop=on_stop,
+        )
+        action.apply(sprite, tag="param_self_completion")
+
+        Action.update_all(1 / 60)
+
+        assert action.done
+        assert condition_calls["count"] == 0
+        assert callback_args == [((None),)]
+        assert action.condition_data is None
+        assert pytest.approx(sprite.center_x, abs=1e-3) == 40.0
+        assert pytest.approx(sprite.center_y, abs=1e-3) == 25.0
+
 
 class TestPriority5_ParametricMotionDebug:
     """Test ParametricMotionUntil debug mode - covers lines 1659-1664."""
