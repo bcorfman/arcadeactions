@@ -54,7 +54,7 @@ statemachine = [
     "python-statemachine>=2.5.0",
 ]
 statemachine_diagrams = [
-    "python-statemachine[diagrams]>=2.5.0",
+    "python-statemachine[diagrams]>=3.0.0",
 ]
 
 [dependency-groups]
