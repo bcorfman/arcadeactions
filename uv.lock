@@ -64,7 +64,7 @@ requires-dist = [
     { name = "pyglet", specifier = ">=2.1.dev5" },
     { name = "pysdl2", specifier = ">=0.9.16" },
     { name = "python-statemachine", marker = "extra == 'statemachine'", specifier = ">=3.1.2" },
-    { name = "python-statemachine", extras = ["diagrams"], marker = "extra == 'statemachine-diagrams'", specifier = ">=3.0.0" },
+    { name = "python-statemachine", extras = ["diagrams"], marker = "extra == 'statemachine-diagrams'", specifier = ">=3.1.2" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "screeninfo", specifier = ">=0.8.1" },
     { name = "watchdog", specifier = ">=5.0.0" },
