@@ -28,7 +28,7 @@ classifiers = [
 ]
 dependencies = [
     "arcade>=3.0.0.dev35",
-    "pyglet>=2.1.dev5",
+    "pyglet>=3.0.dev3",
     # For fallback monitor detection
     "screeninfo>=0.8.1",
     # Optional; provides Python bindings and wheels for SDL2 on many platforms
