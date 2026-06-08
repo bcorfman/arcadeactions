@@ -27,7 +27,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "arcade>=3.0.0.dev35",
+    "arcade>=4.0.0.dev5",
     "pyglet>=2.1.dev5",
     # For fallback monitor detection
     "screeninfo>=0.8.1",
