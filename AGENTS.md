@@ -20,3 +20,7 @@ Dependency/testability:
 - Accept dependencies via constructors; avoid hidden instantiation inside methods.
 - Avoid circular dependencies.
 - Prefer composition over inheritance for dependencies.
+
+E2E verification (required when fixing failures):
+- When addressing an E2E failure (local or CI), re-run E2E locally for the browser/project(s) that failed (e.g. Playwright `--project=<name>` / `PW_PROJECT=<name>`), not just a default browser.
+- If you can’t run the failing browser(s) locally, explicitly state why and run the closest equivalent verification (and call out the remaining risk).
