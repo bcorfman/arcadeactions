@@ -51,7 +51,7 @@ create-action-level = "arcadeactions.dev.create_level:main"
 
 [project.optional-dependencies]
 statemachine = [
-    "python-statemachine>=3.1.2",
+    "python-statemachine>=3.2.1",
 ]
 statemachine_diagrams = [
     "python-statemachine[diagrams]>=3.2.0",
