@@ -133,7 +133,7 @@ Test easing functionality that provides smooth acceleration/deceleration for con
 ```python
 from arcadeactions import Action, MoveUntil, Ease, infinite
 from arcadeactions.frame_timing import seconds_to_frames
-from arcade import easing
+from arcadeactions import easing
 
 class TestEase(ActionTestBase):
     """Test suite for Ease wrapper."""

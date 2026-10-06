@@ -56,6 +56,9 @@ statemachine = [
 statemachine_diagrams = [
     "python-statemachine[diagrams]>=3.2.1",
 ]
+pymunk = [
+    "pymunk>=6.8",
+]
 
 [dependency-groups]
 dev = [

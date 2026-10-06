@@ -241,7 +241,7 @@ Arrange functions contract:
 
 #### Easing Effects (arcadeactions/easing.py)
 - **Ease wrapper** - Apply smooth acceleration/deceleration curves to any conditional action
-- **Multiple easing functions** - Built-in ease_in, ease_out, ease_in_out support
+- **Multiple easing functions** - Built-in `arcadeactions.easing` support for ease-in, ease-out, sine, elastic, and back curves
 - **Custom easing** - Create specialized easing curves and nested easing effects
 
 #### Optional Physics Integration (arcadeactions/physics_adapter.py)
