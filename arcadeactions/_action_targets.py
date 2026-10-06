@@ -113,16 +113,5 @@ def adapt_target(target: Any) -> TargetAdapter:
 
 
 def _get_sprite_list_name(sprite_list: Any) -> str:
-    """Attempt to find an attribute name that refers to this SpriteList."""
-    import gc
-
-    for obj in gc.get_objects():
-        try:
-            obj_dict = obj.__dict__
-            for attr_name, attr_value in obj_dict.items():
-                if attr_value is sprite_list:
-                    return f"{type(obj).__name__}.{attr_name}"
-        except AttributeError:
-            continue
-
+    """Return a stable summary without scanning unrelated live objects."""
     return f"SpriteList(len={len(sprite_list)})"

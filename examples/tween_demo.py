@@ -19,7 +19,7 @@ From the project root, run with:
 """
 
 import arcade
-from arcade import easing
+from arcadeactions import easing
 from arcade.types import Color
 
 from arcadeactions import Action, center_window, tween_until
