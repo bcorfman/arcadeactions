@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import arcade
-from pyglet.gl.lib import GLException
 import pytest
 
+from arcadeactions.visualizer._pyglet_compat import GLException
 from arcadeactions.visualizer.overlay_renderer import OverlayRenderer
 
 
