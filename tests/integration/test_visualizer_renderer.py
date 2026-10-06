@@ -22,7 +22,7 @@ from arcadeactions.visualizer.timeline import TimelineStrip
 
 def _try_opengl_draw(test_func):
     """Try to execute an OpenGL draw operation, skip test if context is invalid."""
-    from pyglet.gl.lib import GLException
+    from arcadeactions.visualizer._pyglet_compat import GLException
 
     try:
         test_func()
@@ -490,7 +490,7 @@ class TestConditionPanelRenderer:
 
             renderer.update(visible=True)
 
-            from pyglet.gl.lib import GLException
+            from arcadeactions.visualizer._pyglet_compat import GLException
 
             call_count = 0
 
@@ -656,7 +656,7 @@ class TestTimelineRendererGL:
 
         renderer.update()
 
-        from pyglet.gl.lib import GLException
+        from arcadeactions.visualizer._pyglet_compat import GLException
 
         call_count = 0
 

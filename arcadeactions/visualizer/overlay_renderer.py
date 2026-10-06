@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import arcade
-from pyglet.gl.lib import GLException
 
-from arcadeactions.visualizer._text_rendering import _TextSpec, _sync_text_objects
+from arcadeactions.visualizer._pyglet_compat import GLException
+from arcadeactions.visualizer._text_rendering import _sync_text_objects, _TextSpec
 
 if TYPE_CHECKING:
     from arcadeactions.visualizer.overlay import ActionCard, InspectorOverlay, TargetGroup

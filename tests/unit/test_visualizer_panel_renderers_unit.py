@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import arcade
-from pyglet.gl.lib import GLException
 
+from arcadeactions.visualizer._pyglet_compat import GLException
 from arcadeactions.visualizer.panel_renderers import ConditionPanelRenderer, TimelineRenderer
 
 
