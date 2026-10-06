@@ -21,7 +21,7 @@ class MockStarfieldView:
     """Mock version of StarfieldView for testing path caching."""
 
     def __init__(self):
-        self.enemy_list = arcade.SpriteList()
+        self.enemy_list = arcade.SpriteList(lazy=True)
         self.enemy_formation = None
         self.cached_entry_paths = None
         self.background_color = arcade.color.BLACK
@@ -345,7 +345,7 @@ class TestSpaceClutterPathCaching:
         cached_actions = view.create_entry_actions_from_cached_paths()
 
         # Create sprite list and apply cached actions
-        test_sprite_list = arcade.SpriteList()
+        test_sprite_list = arcade.SpriteList(lazy=True)
         for sprite, action, _ in cached_actions:
             action.apply(sprite, tag="test_entry")
             test_sprite_list.append(sprite)
@@ -423,7 +423,7 @@ class MockOptimizedStarfieldView:
 
     def __init__(self):
         self.enemy_formation = None
-        self.enemy_list = arcade.SpriteList()
+        self.enemy_list = arcade.SpriteList(lazy=True)
         self.cached_entry_paths = None
         self.cached_actions = None  # Pool of reusable actions
         self.wave_count = 0
