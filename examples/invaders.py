@@ -80,7 +80,7 @@ class GameView(arcade.View):
         arcade.play_sound(self.hit_sound, volume=0.0)  # Preload sound
 
         self.background_color = arcade.color.AMAZON
-        self.window.set_mouse_visible(False)
+        self.window.set_mouse_cursor_visible(False)
 
         # Create text objects for better performance
         self.score_text = arcade.Text(

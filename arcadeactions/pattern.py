@@ -713,7 +713,9 @@ def _determine_min_spacing(target_formation) -> float:
 
 def _clone_formation_sprites(target_formation) -> arcade.SpriteList:
     """Create invisible clones that will perform the entry animation."""
-    sprites = arcade.SpriteList()
+    # Clones are assembled and positioned before they are rendered. Defer
+    # atlas registration until the list is first drawn.
+    sprites = arcade.SpriteList(lazy=True)
     for i in range(len(target_formation)):
         # Create a new sprite with the same texture as the target formation sprite
         target_sprite = target_formation[i]

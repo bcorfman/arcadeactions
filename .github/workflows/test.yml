@@ -60,7 +60,7 @@ jobs:
 
       - name: Install statemachine extra for examples (Linux Python 3.11 only)
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
-        run: uv sync --extra statemachine --dev
+        run: uv sync --extra statemachine --extra pymunk --dev
 
       - name: Smoke test examples (Linux Python 3.11 only)
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'

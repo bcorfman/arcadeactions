@@ -24,7 +24,9 @@ def _ensure_sprite_list(sprites) -> arcade.SpriteList:
         sprites.draw
         return sprites
     except AttributeError:
-        sprite_list = arcade.SpriteList()
+        # A converted list may only be used for formation calculations. Defer
+        # GPU and atlas allocation until Arcade actually draws the list.
+        sprite_list = arcade.SpriteList(lazy=True)
         for sprite in sprites:
             sprite_list.append(sprite)
         return sprite_list
