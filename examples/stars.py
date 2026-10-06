@@ -16,7 +16,7 @@ import random
 from collections.abc import Callable
 
 import arcade
-from arcade import easing
+from arcadeactions import easing
 
 from arcadeactions import (
     Action,

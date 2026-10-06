@@ -294,7 +294,7 @@ class TestTweenUntilFrames(ActionTestBase):
 
     def test_tween_until_frames_with_easing(self, test_sprite):
         """Test TweenUntil with frame-based duration and easing."""
-        from arcade import easing
+        from arcadeactions import easing
 
         from arcadeactions import tween_until
         from arcadeactions.frame_timing import after_frames
@@ -353,7 +353,7 @@ class TestEaseFrames(ActionTestBase):
 
     def test_ease_frames_basic(self, test_sprite):
         """Test Ease wrapper with frame-based duration."""
-        from arcade import easing
+        from arcadeactions import easing
 
         from arcadeactions import MoveUntil, ease
 
@@ -386,7 +386,7 @@ class TestEaseFrames(ActionTestBase):
 
     def test_ease_frames_with_completion_callback(self, test_sprite):
         """Test Ease wrapper completion callback with frames."""
-        from arcade import easing
+        from arcadeactions import easing
 
         from arcadeactions import MoveUntil, ease
         from arcadeactions.conditional import infinite

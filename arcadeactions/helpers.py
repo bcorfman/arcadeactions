@@ -389,7 +389,7 @@ def ease(
 ) -> Ease:
     """Creates and applies an Ease action."""
     if ease_function is None:
-        from arcade import easing
+        from arcadeactions import easing
 
         ease_function = easing.ease_in_out
     ease_action = Ease(action, frames=frames, ease_function=ease_function, on_complete=on_complete, tag=tag)

@@ -189,7 +189,7 @@ fade_to(sprite, target_alpha=50, speed=4)
 
 #### Easing Effects (arcadeactions/easing.py)
 - **Ease wrapper** - Apply smooth acceleration/deceleration curves to any conditional action
-- **Built-in easing functions** - Use Arcade's ease_in, ease_out, ease_in_out curves
+- **Built-in easing functions** - Use `arcadeactions.easing` curves such as `ease_in`, `ease_out`, and `ease_in_out`
 - **Custom easing support** - Create custom easing curves for specialized effects
 - **Nested easing** - Combine multiple easing levels for complex animations
 - **Completion callbacks** - Execute code when easing transitions complete
@@ -226,7 +226,7 @@ ArcadeActions provides two distinct but complementary approaches for creating sm
 
 ```python
 from arcadeactions import ease, infinite, move_until, follow_path_until, seconds_to_frames
-from arcade import easing
+from arcadeactions import easing
 
 # Example 1: Smooth missile launch
 missile_movement = move_until(missile, velocity=(300, 0), condition=infinite)  # Continuous movement
@@ -264,7 +264,7 @@ ease(enemy_formation, formation_move, frames=seconds_to_frames(1.0), ease_functi
 ```python
 from arcadeactions.frame_timing import after_frames, seconds_to_frames
 from arcadeactions importtween_until
-from arcade import easing
+from arcadeactions import easing
 
 # Example 1: UI panel slide-in
 tween_until(ui_panel, start_value=-200, end_value=100, property_name="center_x", condition=after_frames(seconds_to_frames(0.8), ease_function=easing.ease_out)
@@ -327,7 +327,7 @@ def create_guard_behavior(guard_sprite):
 
 ```python
 from arcadeactions import ease, fade_until, infinite, move_until, rotate_until, seconds_to_frames
-from arcade import easing
+from arcadeactions import easing
 
 # Multiple concurrent eased effects
 move_action = move_until(sprite, velocity=(200, 100), condition=infinite)
@@ -1286,7 +1286,7 @@ The `ease()` helper function provides smooth acceleration and deceleration effec
 ```python
 from arcadeactions.frame_timing import after_frames, seconds_to_frames
 from arcadeactions import ease, move_until, seconds_to_frames
-from arcade import easing
+from arcadeactions import easing
 
 # Wrap any conditional action with easing
 move = move_until(sprite, velocity=(200, 0), condition=after_frames(seconds_to_frames(3.0))
@@ -1296,10 +1296,10 @@ ease(sprite, move, frames=seconds_to_frames(2.0), ease_function=easing.ease_in_o
 ```
 
 ### Easing Functions
-Use Arcade's built-in easing functions for different effects:
+Use `arcadeactions.easing` functions for different effects:
 
 ```python
-from arcade import easing
+from arcadeactions import easing
 from arcadeactions.frame_timing import after_frames, seconds_to_frames
 from arcadeactions import ease, move_until, seconds_to_frames
 
@@ -1321,7 +1321,7 @@ Create smooth curved movements with automatic sprite rotation:
 ```python
 # Complex curved missile trajectory with easing
 from arcadeactions import ease, follow_path_until, seconds_to_frames
-from arcade import easing
+from arcadeactions import easing
 control_points = [(player.center_x, player.center_y),
                   (target.center_x + 100, target.center_y + 50),  # Arc over target
                   (target.center_x, target.center_y)]
@@ -1346,7 +1346,7 @@ Apply different easing to multiple effects simultaneously:
 
 ```python
 from arcadeactions import ease, move_until, rotate_until, fade_until, infinite, seconds_to_frames
-from arcade import easing
+from arcadeactions import easing
 
 # Create multiple effects with different easing curves
 move = move_until(sprite, velocity=(200, 100), condition=infinite)

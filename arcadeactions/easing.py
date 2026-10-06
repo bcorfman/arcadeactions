@@ -8,8 +8,73 @@ and modulates their intensity over time using easing curves.
 from __future__ import annotations
 
 from collections.abc import Callable
+from math import cos, pi, sin
 
 from arcadeactions import Action
+
+
+def linear(percent: float) -> float:
+    """Return an unchanged progress value."""
+    return percent
+
+
+def ease_in(percent: float) -> float:
+    """Return quadratic ease-in progress."""
+    return percent**2
+
+
+def ease_out(percent: float) -> float:
+    """Return quadratic ease-out progress."""
+    return 1 - (1 - percent) ** 2
+
+
+def ease_in_out(percent: float) -> float:
+    """Return quadratic ease-in/out progress."""
+    return 2 * percent**2 if percent < 0.5 else 1 - (-2 * percent + 2) ** 2 / 2
+
+
+def smoothstep(percent: float) -> float:
+    """Return smoothstep progress."""
+    return percent**2 * (3.0 - 2.0 * percent)
+
+
+def ease_out_elastic(percent: float) -> float:
+    """Return elastic ease-out progress."""
+    c4 = 2 * pi / 3
+    if percent == 1:
+        return 1
+    if percent > 0:
+        return 2 ** (-10 * percent) * sin((percent * 10 - 0.75) * c4) + 1
+    return 0.0
+
+
+def ease_in_back(percent: float) -> float:
+    """Return ease-in progress that briefly moves backward."""
+    c1 = 1.70158
+    c3 = c1 + 1
+    return c3 * percent**3 - c1 * percent**2
+
+
+def ease_out_back(percent: float) -> float:
+    """Return ease-out progress that briefly overshoots."""
+    c1 = 1.70158
+    c3 = c1 + 1
+    return 1 + c3 * (percent - 1) ** 3 + c1 * (percent - 1) ** 2
+
+
+def ease_in_sin(percent: float) -> float:
+    """Return sine ease-in progress."""
+    return 1 - cos((percent * pi) / 2)
+
+
+def ease_out_sin(percent: float) -> float:
+    """Return sine ease-out progress."""
+    return sin((percent * pi) / 2)
+
+
+def ease_in_out_sin(percent: float) -> float:
+    """Return sine ease-in/out progress."""
+    return -cos(percent * pi) * 0.5 + 0.5
 
 
 class Ease(Action):
@@ -81,9 +146,7 @@ class Ease(Action):
 
         # Set default easing function if None provided
         if ease_function is None:
-            from arcade import easing
-
-            ease_function = easing.ease_in_out
+            ease_function = ease_in_out
         self.ease_function = ease_function
         self.on_complete = on_complete
 
