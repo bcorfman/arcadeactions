@@ -10,7 +10,7 @@ The CI workflow has been split into two jobs to ensure proper testing of both co
 
 **Configuration**:
 - Runs on: All platforms (ubuntu, windows, macos)
-- Python versions: 3.10, 3.11, 3.12, 3.13
+- Python versions: 3.11, 3.12, 3.13, 3.14
 - Installation: `uv sync --dev` (bare package, NO extras)
 - Tests: `pytest tests/ --ignore=tests/integration`
 

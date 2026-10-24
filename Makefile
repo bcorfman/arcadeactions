@@ -2,7 +2,7 @@ PACKAGE := arcadeactions
 PACKAGE_DIR := src/${PACKAGE}
 SHELL := env PYTHON_VERSION=3.10 /bin/bash
 .SILENT: install devinstall tools test run lint format
-PYTHON_VERSION ?= 3.10
+PYTHON_VERSION ?= 3.11
 
 setup:
 	curl -LsSf https://astral.sh/uv/install.sh | sh
